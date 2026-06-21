@@ -17,21 +17,27 @@ function seededRandom(seed: number): number {
 function generateDailyChannelStats(): DailyChannelStats[] {
   const stats: DailyChannelStats[] = []
   const today = new Date()
+  const startDate = new Date('2025-07-01')
   const baseLeads: Record<string, number> = {
     dy: 35, xhs: 22, mt: 18, pyq: 12, zjs: 8, zrdy: 5,
   }
+  const totalDays = Math.floor((today.getTime() - startDate.getTime()) / 86400000) + 1
 
-  for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - dayOffset)
+  for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+    const date = new Date(startDate)
+    date.setDate(date.getDate() + dayOffset)
     const dateStr = date.toISOString().split('T')[0]
     const daySeed = dayOffset * 7
 
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const monthIndex = monthKey === '2025-07' ? 0 : monthKey === '2025-08' ? 1 : monthKey === '2025-09' ? 2 : monthKey === '2025-10' ? 3 : monthKey === '2025-11' ? 4 : monthKey === '2025-12' ? 5 : monthKey === '2026-01' ? 6 : monthKey === '2026-02' ? 7 : monthKey === '2026-03' ? 8 : monthKey === '2026-04' ? 9 : monthKey === '2026-05' ? 10 : 11
+    const monthMultiplier = 0.8 + monthIndex * 0.025
+
     for (const channel of channels) {
       const seed = daySeed + channel.id.charCodeAt(0)
-      const base = baseLeads[channel.id]
+      const base = baseLeads[channel.id] * monthMultiplier
       const variance = seededRandom(seed) * 0.3 - 0.15
-      const newLeads = Math.round(base * (1 + variance))
+      const newLeads = Math.max(1, Math.round(base * (1 + variance)))
       const validRate = 0.55 + seededRandom(seed + 1) * 0.25
       const validLeads = Math.round(newLeads * validRate)
       const bookingRate = 0.3 + seededRandom(seed + 2) * 0.2

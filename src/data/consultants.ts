@@ -19,24 +19,29 @@ function seededRandom(seed: number): number {
 function generateConsultantDaily(): ConsultantDaily[] {
   const result: ConsultantDaily[] = []
   const today = new Date()
+  const startDate = new Date('2025-07-01')
+  const totalDays = Math.floor((today.getTime() - startDate.getTime()) / 86400000) + 1
 
-  for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - dayOffset)
+  for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+    const date = new Date(startDate)
+    date.setDate(date.getDate() + dayOffset)
     const dateStr = date.toISOString().split('T')[0]
     const daySeed = dayOffset * 17
+
+    const monthIndex = date.getMonth() + (date.getFullYear() - 2025) * 12 - 6
+    const monthMultiplier = 0.8 + Math.max(0, monthIndex) * 0.025
 
     for (let i = 0; i < consultants.length; i++) {
       const c = consultants[i]
       const seed = daySeed + i * 31
-      const activeLeads = Math.round(8 + seededRandom(seed) * 12)
+      const activeLeads = Math.max(1, Math.round((8 + seededRandom(seed) * 12) * monthMultiplier))
       const avgFirstResponseMin = Math.round(3 + seededRandom(seed + 1) * 30)
-      const booked = Math.round(2 + seededRandom(seed + 2) * 5)
-      const arrived = Math.round(booked * (0.5 + seededRandom(seed + 3) * 0.3))
-      const closed = Math.round(arrived * (0.3 + seededRandom(seed + 4) * 0.3))
+      const booked = Math.max(0, Math.round((2 + seededRandom(seed + 2) * 5) * monthMultiplier))
+      const arrived = Math.max(0, Math.round(booked * (0.5 + seededRandom(seed + 3) * 0.3)))
+      const closed = Math.max(0, Math.round(arrived * (0.3 + seededRandom(seed + 4) * 0.3)))
       const dealAmount = Math.round(closed * (6000 + seededRandom(seed + 5) * 18000))
-      const repeatPurchase = Math.round(seededRandom(seed + 6) * 3)
-      const referralCount = Math.round(seededRandom(seed + 7) * 4)
+      const repeatPurchase = Math.max(0, Math.round(seededRandom(seed + 6) * 3 * monthMultiplier))
+      const referralCount = Math.max(0, Math.round(seededRandom(seed + 7) * 4 * monthMultiplier))
 
       result.push({
         consultantId: c.id,

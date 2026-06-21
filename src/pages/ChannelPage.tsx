@@ -206,10 +206,18 @@ function ChannelTrendChart() {
 
 function CostInputSection() {
   const [isOpen, setIsOpen] = useState(false)
-  const [costs, setCosts] = useState<CostEntry[]>([])
+  const [costs, setCosts] = useState<CostEntry[]>(() => {
+    try {
+      const raw = localStorage.getItem('channel_costs')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
   const [formChannel, setFormChannel] = useState(channels[0].id)
   const [formAmount, setFormAmount] = useState('')
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0])
+  const [submitMsg, setSubmitMsg] = useState<{ text: string; type: 'ok' | 'warn' } | null>(null)
 
   const today = new Date()
   const sevenDaysAgo = new Date(today)
@@ -218,26 +226,44 @@ function CostInputSection() {
   const endStr = today.toISOString().split('T')[0]
   const recentStats = getChannelStatsByDateRange(startStr, endStr)
 
+  const persistCosts = (next: CostEntry[]) => {
+    setCosts(next)
+    try {
+      localStorage.setItem('channel_costs', JSON.stringify(next))
+    } catch {
+      /* ignore quota errors */
+    }
+  }
+
   const roiData = useMemo(() => {
     return channels.map(ch => {
       const channelStats = recentStats.filter(s => s.channelId === ch.id)
       const totalDeal = channelStats.reduce((sum, s) => sum + s.dealAmount, 0)
-      const customCost = costs
-        .filter(c => c.channelId === ch.id)
+      const inRangeCustomCost = costs
+        .filter(c => c.channelId === ch.id && c.date >= startStr && c.date <= endStr)
         .reduce((sum, c) => sum + c.amount, 0)
-      const dailyCost = customCost > 0 ? customCost / 7 : ch.dailyCost
-      const totalCost = dailyCost * 7
+      const defaultCost = ch.dailyCost * 7
+      const totalCost = inRangeCustomCost > 0 ? inRangeCustomCost : defaultCost
       const roi = totalCost > 0 ? totalDeal / totalCost : 0
-      return { ...ch, totalDeal, totalCost, roi }
+      return { ...ch, totalDeal, totalCost, roi, usedCustom: inRangeCustomCost > 0 }
     })
-  }, [costs, recentStats])
+  }, [costs, recentStats, startStr, endStr])
 
   const handleSubmit = () => {
     const amount = parseFloat(formAmount)
     if (isNaN(amount) || amount <= 0) return
-    setCosts(prev => [...prev, { channelId: formChannel, amount, date: formDate }])
+    const next = [...costs, { channelId: formChannel, amount, date: formDate }]
+    persistCosts(next)
     setFormAmount('')
-    setIsOpen(false)
+    const inRange = formDate >= startStr && formDate <= endStr
+    const chName = channels.find(c => c.id === formChannel)?.name ?? ''
+    if (inRange) {
+      setSubmitMsg({ text: `已录入${chName}成本，将参与当前7日ROI计算`, type: 'ok' })
+    } else {
+      setSubmitMsg({ text: `已录入${chName}成本，日期在当前7日范围外，暂不影响当前ROI`, type: 'warn' })
+    }
+    setTimeout(() => setSubmitMsg(null), 3000)
+    setTimeout(() => setIsOpen(false), 400)
   }
 
   return (
@@ -295,12 +321,30 @@ function CostInputSection() {
         </div>
       </Modal>
 
+      {submitMsg && (
+        <div
+          className={cn(
+            'mb-3 text-xs px-3 py-2 rounded-lg',
+            submitMsg.type === 'ok'
+              ? 'bg-brand-emerald/10 text-brand-emerald border border-brand-emerald/20'
+              : 'bg-brand-amber/10 text-brand-amber border border-brand-amber/20'
+          )}
+        >
+          {submitMsg.text}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {roiData.map(ch => (
           <div key={ch.id} className="bg-brand-card-hover rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ch.color }} />
               <span className="text-xs text-brand-text-secondary">{ch.name}</span>
+              {ch.usedCustom && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-brand-emerald/15 text-brand-emerald">
+                  自定义成本
+                </span>
+              )}
             </div>
             <div className="flex items-baseline gap-1">
               <span className="font-mono text-lg font-bold text-brand-text-primary">

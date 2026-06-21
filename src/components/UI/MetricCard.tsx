@@ -9,6 +9,7 @@ interface MetricCardProps {
   change?: number
   unit?: string
   color?: 'emerald' | 'amber' | 'red' | 'blue'
+  format?: (num: number) => string
 }
 
 const colorMap = {
@@ -25,12 +26,12 @@ const glowMap = {
   blue: '',
 }
 
-export default function MetricCard({ icon, label, value, change, unit, color = 'emerald' }: MetricCardProps) {
+export default function MetricCard({ icon, label, value, change, unit, color = 'emerald', format }: MetricCardProps) {
   const [displayValue, setDisplayValue] = useState<string | number>(0)
   const rafRef = useRef<number>(0)
 
   useEffect(() => {
-    const numericValue = typeof value === 'string' ? parseFloat(value) : value
+    const numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value
     if (isNaN(numericValue)) {
       setDisplayValue(value)
       return
@@ -45,7 +46,9 @@ export default function MetricCard({ icon, label, value, change, unit, color = '
       const eased = 1 - Math.pow(1 - progress, 3)
       const current = numericValue * eased
 
-      if (Number.isInteger(numericValue)) {
+      if (format) {
+        setDisplayValue(format(current))
+      } else if (Number.isInteger(numericValue)) {
         setDisplayValue(Math.round(current))
       } else {
         setDisplayValue(current.toFixed(1))
@@ -58,7 +61,7 @@ export default function MetricCard({ icon, label, value, change, unit, color = '
 
     rafRef.current = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [value])
+  }, [value, format])
 
   const isPositive = change !== undefined && change >= 0
 

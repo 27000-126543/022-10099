@@ -119,9 +119,10 @@ export default function OverviewPage() {
           <MetricCard
             icon={<DollarSign size={18} />}
             label="成交金额"
-            value={metrics.totalDealAmount.toLocaleString()}
+            value={metrics.totalDealAmount}
             unit="¥"
             color="amber"
+            format={(v) => Math.round(v).toLocaleString()}
           />
         </div>
 

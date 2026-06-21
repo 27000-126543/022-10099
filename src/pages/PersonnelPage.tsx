@@ -64,12 +64,17 @@ export default function PersonnelPage() {
 
     const bucketCounts = RESPONSE_BUCKETS.map(bucket => {
       const count = avgByConsultant.filter(c => c.avg >= bucket.min && c.avg < bucket.max).length
-      return { name: bucket.label, count, isSlow: bucket.min >= 10 }
+      return { name: bucket.label, count, isSlow: bucket.min >= 10, bucketMin: bucket.min, bucketMax: bucket.max }
     })
 
     const overallAvg = avgByConsultant.reduce((s, c) => s + c.avg, 0) / avgByConsultant.length
+    const avgBucketIndex = Math.max(
+      0,
+      RESPONSE_BUCKETS.findIndex(b => overallAvg >= b.min && overallAvg < b.max)
+    )
+    const avgBucketCount = bucketCounts[avgBucketIndex]?.count ?? 0
 
-    return { bucketCounts, overallAvg }
+    return { bucketCounts, overallAvg, avgBucketCount, avgBucketIndex }
   }, [])
 
   const funnelData = useMemo(() => {
@@ -140,19 +145,52 @@ export default function PersonnelPage() {
         </section>
 
         <section className="bg-brand-card border border-brand-border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Badge variant="amber">响应</Badge>
-            <h2 className="text-lg font-semibold text-brand-text-primary">首响时长分布</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Badge variant="amber">响应</Badge>
+              <h2 className="text-lg font-semibold text-brand-text-primary">首响时长分布</h2>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <div className="text-[10px] text-brand-text-muted uppercase tracking-wider">团队平均首响</div>
+                <div className="font-mono text-2xl font-bold text-brand-amber">
+                  {responseData.overallAvg.toFixed(1)}<span className="text-sm font-medium ml-0.5">分钟</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-brand-text-muted uppercase tracking-wider">落在区间</div>
+                <div className="text-sm font-semibold text-brand-text-secondary">
+                  {responseData.bucketCounts[responseData.avgBucketIndex]?.name ?? '-'}
+                </div>
+              </div>
+            </div>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={responseData.bucketCounts} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart
+              data={responseData.bucketCounts}
+              margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
               <XAxis dataKey="name" tick={{ fill: '#94A3B8', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#94A3B8', fontSize: 12 }} allowDecimals={false} />
+              <YAxis tick={{ fill: '#94A3B8', fontSize: 12 }} allowDecimals={false} label={{ value: '顾问人数', angle: -90, position: 'insideLeft', fill: '#64748B', fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', borderRadius: 8 }}
                 labelStyle={{ color: '#F1F5F9' }}
-                itemStyle={{ color: '#00D4AA' }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.[0]) return null
+                  const d = payload[0].payload
+                  return (
+                    <div style={{ backgroundColor: '#0F172A', border: '1px solid #1E293B', borderRadius: 8, padding: 10 }}>
+                      <div style={{ color: '#F1F5F9', fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                      <div style={{ color: d.isSlow ? '#EF4444' : '#00D4AA', fontSize: 13 }}>
+                        顾问人数：{d.count}
+                      </div>
+                      <div style={{ color: '#94A3B8', fontSize: 11, marginTop: 2 }}>
+                        {d.bucketMin >= 1000 ? '≥30分钟' : `${d.bucketMin}-${d.bucketMax === Infinity ? '30' : d.bucketMax}分钟`}
+                      </div>
+                    </div>
+                  )
+                }}
               />
               <Legend />
               <Bar dataKey="count" name="顾问人数" radius={[4, 4, 0, 0]}>
@@ -161,7 +199,7 @@ export default function PersonnelPage() {
                 ))}
               </Bar>
               <ReferenceLine
-                y={responseData.overallAvg}
+                y={responseData.avgBucketCount}
                 stroke="#FBBF24"
                 strokeDasharray="6 3"
                 strokeWidth={2}
@@ -170,6 +208,7 @@ export default function PersonnelPage() {
                   position: 'right',
                   fill: '#FBBF24',
                   fontSize: 12,
+                  fontWeight: 600,
                 }}
               />
             </BarChart>

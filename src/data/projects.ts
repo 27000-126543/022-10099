@@ -16,21 +16,26 @@ function seededRandom(seed: number): number {
 function generateDailyProjectStats(): DailyProjectStats[] {
   const stats: DailyProjectStats[] = []
   const today = new Date()
+  const startDate = new Date('2025-07-01')
   const baseLeads: Record<string, number> = {
     inject: 28, laser: 22, surgery: 10, skin: 20, antiaging: 15,
   }
+  const totalDays = Math.floor((today.getTime() - startDate.getTime()) / 86400000) + 1
 
-  for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - dayOffset)
+  for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+    const date = new Date(startDate)
+    date.setDate(date.getDate() + dayOffset)
     const dateStr = date.toISOString().split('T')[0]
     const daySeed = dayOffset * 13
 
+    const monthIndex = date.getMonth() + (date.getFullYear() - 2025) * 12 - 6
+    const monthMultiplier = 0.8 + Math.max(0, monthIndex) * 0.025
+
     for (const project of projects) {
       const seed = daySeed + project.id.charCodeAt(0)
-      const base = baseLeads[project.id]
+      const base = baseLeads[project.id] * monthMultiplier
       const variance = seededRandom(seed) * 0.3 - 0.15
-      const leads = Math.round(base * (1 + variance))
+      const leads = Math.max(1, Math.round(base * (1 + variance)))
       const bookingRate = 0.25 + seededRandom(seed + 1) * 0.2
       const booked = Math.round(leads * bookingRate)
       const arrivalRate = 0.5 + seededRandom(seed + 2) * 0.25
