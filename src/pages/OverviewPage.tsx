@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserPlus, CheckCircle2, Zap, CalendarCheck, Building2, DollarSign } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
@@ -7,27 +7,56 @@ import { cn } from '@/lib/utils'
 import PageWrapper from '@/components/Layout/PageWrapper'
 import MetricCard from '@/components/UI/MetricCard'
 import FunnelChart from '@/components/Charts/FunnelChart'
-import { channels, getYesterdayChannelStats } from '@/data/channels'
-import { getYesterdayProjectStats } from '@/data/projects'
+import { channels, getChannelStatsByDateRange } from '@/data/channels'
+import { dailyProjectStats } from '@/data/projects'
 import { getActiveAlerts } from '@/data/alerts'
+
+type DateRangeKey = '7d' | '30d' | 'month'
+
+function formatDate(date: Date): string {
+  return date.toISOString().split('T')[0]
+}
+
+function getDateRange(key: DateRangeKey): { start: string; end: string } {
+  const today = new Date()
+  const end = formatDate(today)
+
+  if (key === '7d') {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 6)
+    return { start: formatDate(start), end }
+  }
+
+  if (key === '30d') {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 29)
+    return { start: formatDate(start), end }
+  }
+
+  const start = new Date(today.getFullYear(), today.getMonth(), 1)
+  return { start: formatDate(start), end }
+}
 
 export default function OverviewPage() {
   const navigate = useNavigate()
+  const [dateRange, setDateRange] = useState<DateRangeKey>('7d')
 
-  const yesterdayChannelStats = useMemo(() => getYesterdayChannelStats(), [])
-  const yesterdayProjectStats = useMemo(() => getYesterdayProjectStats(), [])
+  const { start, end } = useMemo(() => getDateRange(dateRange), [dateRange])
+
+  const channelStats = useMemo(() => getChannelStatsByDateRange(start, end), [start, end])
+  const projectStats = useMemo(() => dailyProjectStats.filter(s => s.date >= start && s.date <= end), [start, end])
   const activeAlerts = useMemo(() => getActiveAlerts(), [])
 
   const metrics = useMemo(() => {
-    const totalNewLeads = yesterdayChannelStats.reduce((s, c) => s + c.newLeads, 0)
-    const totalValidLeads = yesterdayChannelStats.reduce((s, c) => s + c.validLeads, 0)
-    const totalBooked = yesterdayChannelStats.reduce((s, c) => s + c.booked, 0)
-    const totalArrived = yesterdayChannelStats.reduce((s, c) => s + c.arrived, 0)
-    const totalDealAmount = yesterdayChannelStats.reduce((s, c) => s + c.dealAmount, 0)
+    const totalNewLeads = channelStats.reduce((s, c) => s + c.newLeads, 0)
+    const totalValidLeads = channelStats.reduce((s, c) => s + c.validLeads, 0)
+    const totalBooked = channelStats.reduce((s, c) => s + c.booked, 0)
+    const totalArrived = channelStats.reduce((s, c) => s + c.arrived, 0)
+    const totalDealAmount = channelStats.reduce((s, c) => s + c.dealAmount, 0)
     const validRate = totalNewLeads > 0 ? (totalValidLeads / totalNewLeads) * 100 : 0
-    const fastResponseCount = yesterdayChannelStats.filter(c => c.avgFirstResponseMin < 10).length
-    const totalChannelCount = yesterdayChannelStats.length
-    const firstResponseRate = totalChannelCount > 0 ? (fastResponseCount / totalChannelCount) * 100 : 0
+    const fastResponseCount = channelStats.filter(c => c.avgFirstResponseMin < 10).length
+    const totalRecords = channelStats.length
+    const firstResponseRate = totalRecords > 0 ? (fastResponseCount / totalRecords) * 100 : 0
     const bookingRate = totalValidLeads > 0 ? (totalBooked / totalValidLeads) * 100 : 0
     const arrivalRate = totalBooked > 0 ? (totalArrived / totalBooked) * 100 : 0
 
@@ -39,26 +68,34 @@ export default function OverviewPage() {
       arrivalRate,
       totalDealAmount,
     }
-  }, [yesterdayChannelStats])
+  }, [channelStats])
 
   const channelRanking = useMemo(() => {
-    return yesterdayChannelStats
-      .map(stat => {
-        const channel = channels.find(c => c.id === stat.channelId)
+    const channelTotals: Record<string, { newLeads: number }> = {}
+    for (const stat of channelStats) {
+      if (!channelTotals[stat.channelId]) {
+        channelTotals[stat.channelId] = { newLeads: 0 }
+      }
+      channelTotals[stat.channelId].newLeads += stat.newLeads
+    }
+
+    return Object.entries(channelTotals)
+      .map(([channelId, data]) => {
+        const channel = channels.find(c => c.id === channelId)
         return {
-          name: channel?.name ?? stat.channelId,
-          value: stat.newLeads,
+          name: channel?.name ?? channelId,
+          value: data.newLeads,
           color: channel?.color ?? '#6B7280',
         }
       })
       .sort((a, b) => b.value - a.value)
-  }, [yesterdayChannelStats])
+  }, [channelStats])
 
   const funnelStages = useMemo(() => {
-    const totalLeads = yesterdayProjectStats.reduce((s, p) => s + p.leads, 0)
-    const totalBooked = yesterdayProjectStats.reduce((s, p) => s + p.booked, 0)
-    const totalArrived = yesterdayProjectStats.reduce((s, p) => s + p.arrived, 0)
-    const totalClosed = yesterdayProjectStats.reduce((s, p) => s + p.closed, 0)
+    const totalLeads = projectStats.reduce((s, p) => s + p.leads, 0)
+    const totalBooked = projectStats.reduce((s, p) => s + p.booked, 0)
+    const totalArrived = projectStats.reduce((s, p) => s + p.arrived, 0)
+    const totalClosed = projectStats.reduce((s, p) => s + p.closed, 0)
 
     const bookingRate = totalLeads > 0 ? ((totalBooked / totalLeads) * 100).toFixed(1) + '%' : '-'
     const arrivalRate = totalBooked > 0 ? ((totalArrived / totalBooked) * 100).toFixed(1) + '%' : '-'
@@ -70,7 +107,7 @@ export default function OverviewPage() {
       { name: '到院', value: totalArrived, rate: arrivalRate },
       { name: '成交', value: totalClosed, rate: closeRate },
     ]
-  }, [yesterdayProjectStats])
+  }, [projectStats])
 
   const alertText = useMemo(() => {
     const count = activeAlerts.length
@@ -78,9 +115,34 @@ export default function OverviewPage() {
     return `${count}条待处理告警：${titles}`
   }, [activeAlerts])
 
+  const dateRangeOptions: { key: DateRangeKey; label: string }[] = [
+    { key: '7d', label: '最近7日' },
+    { key: '30d', label: '最近30日' },
+    { key: 'month', label: '本月' },
+  ]
+
   return (
     <PageWrapper>
       <div className="space-y-6 pb-14">
+        <div className="flex justify-end">
+          <div className="flex bg-brand-card-hover rounded-lg p-0.5">
+            {dateRangeOptions.map(option => (
+              <button
+                key={option.key}
+                onClick={() => setDateRange(option.key)}
+                className={cn(
+                  'px-4 py-1.5 text-sm rounded-md font-medium transition-colors',
+                  dateRange === option.key
+                    ? 'bg-brand-emerald text-white'
+                    : 'text-brand-text-muted hover:text-brand-text-secondary'
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <MetricCard
             icon={<UserPlus size={18} />}

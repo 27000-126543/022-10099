@@ -13,6 +13,12 @@ export const monthlyReports: MonthlyReport[] = [
   { month: '2026-04', totalLeads: 800, validRate: 0.73, bookingRate: 0.40, arrivalRate: 0.63, totalDealAmount: 1950000, repeatPurchaseRate: 0.26, referralRate: 0.18 },
   { month: '2026-05', totalLeads: 830, validRate: 0.75, bookingRate: 0.41, arrivalRate: 0.65, totalDealAmount: 2180000, repeatPurchaseRate: 0.28, referralRate: 0.20 },
   { month: '2026-06', totalLeads: 850, validRate: 0.74, bookingRate: 0.42, arrivalRate: 0.66, totalDealAmount: 2350000, repeatPurchaseRate: 0.29, referralRate: 0.21 },
+  { month: '2026-07', totalLeads: 890, validRate: 0.76, bookingRate: 0.43, arrivalRate: 0.67, totalDealAmount: 2520000, repeatPurchaseRate: 0.30, referralRate: 0.22 },
+  { month: '2026-08', totalLeads: 920, validRate: 0.77, bookingRate: 0.44, arrivalRate: 0.68, totalDealAmount: 2680000, repeatPurchaseRate: 0.31, referralRate: 0.23 },
+  { month: '2026-09', totalLeads: 900, validRate: 0.75, bookingRate: 0.42, arrivalRate: 0.66, totalDealAmount: 2580000, repeatPurchaseRate: 0.29, referralRate: 0.21 },
+  { month: '2026-10', totalLeads: 960, validRate: 0.78, bookingRate: 0.45, arrivalRate: 0.69, totalDealAmount: 2850000, repeatPurchaseRate: 0.32, referralRate: 0.24 },
+  { month: '2026-11', totalLeads: 1010, validRate: 0.79, bookingRate: 0.46, arrivalRate: 0.70, totalDealAmount: 3100000, repeatPurchaseRate: 0.33, referralRate: 0.25 },
+  { month: '2026-12', totalLeads: 1050, validRate: 0.78, bookingRate: 0.45, arrivalRate: 0.68, totalDealAmount: 3250000, repeatPurchaseRate: 0.32, referralRate: 0.24 },
 ]
 
 export function getLatestMonth(): MonthlyReport {

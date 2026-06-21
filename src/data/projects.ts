@@ -15,12 +15,12 @@ function seededRandom(seed: number): number {
 
 function generateDailyProjectStats(): DailyProjectStats[] {
   const stats: DailyProjectStats[] = []
-  const today = new Date()
   const startDate = new Date('2025-07-01')
+  const endDate = new Date('2026-12-31')
   const baseLeads: Record<string, number> = {
     inject: 28, laser: 22, surgery: 10, skin: 20, antiaging: 15,
   }
-  const totalDays = Math.floor((today.getTime() - startDate.getTime()) / 86400000) + 1
+  const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1
 
   for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
     const date = new Date(startDate)
@@ -29,7 +29,7 @@ function generateDailyProjectStats(): DailyProjectStats[] {
     const daySeed = dayOffset * 13
 
     const monthIndex = date.getMonth() + (date.getFullYear() - 2025) * 12 - 6
-    const monthMultiplier = 0.8 + Math.max(0, monthIndex) * 0.025
+    const monthMultiplier = 0.8 + Math.max(0, monthIndex) * 0.02
 
     for (const project of projects) {
       const seed = daySeed + project.id.charCodeAt(0)

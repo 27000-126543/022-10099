@@ -18,9 +18,9 @@ function seededRandom(seed: number): number {
 
 function generateConsultantDaily(): ConsultantDaily[] {
   const result: ConsultantDaily[] = []
-  const today = new Date()
   const startDate = new Date('2025-07-01')
-  const totalDays = Math.floor((today.getTime() - startDate.getTime()) / 86400000) + 1
+  const endDate = new Date('2026-12-31')
+  const totalDays = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1
 
   for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
     const date = new Date(startDate)
@@ -29,7 +29,7 @@ function generateConsultantDaily(): ConsultantDaily[] {
     const daySeed = dayOffset * 17
 
     const monthIndex = date.getMonth() + (date.getFullYear() - 2025) * 12 - 6
-    const monthMultiplier = 0.8 + Math.max(0, monthIndex) * 0.025
+    const monthMultiplier = 0.8 + Math.max(0, monthIndex) * 0.02
 
     for (let i = 0; i < consultants.length; i++) {
       const c = consultants[i]

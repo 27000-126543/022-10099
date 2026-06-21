@@ -14,7 +14,7 @@ import {
   Cell,
 } from 'recharts'
 import { motion, AnimatePresence } from 'framer-motion'
-import { DollarSign, TrendingUp, ChevronDown, ChevronRight, Users } from 'lucide-react'
+import { DollarSign, TrendingUp, ChevronDown, ChevronRight, Users, Trash2 } from 'lucide-react'
 import { channels, dailyChannelStats, getChannelStatsByDateRange } from '@/data/channels'
 import PageWrapper from '@/components/Layout/PageWrapper'
 import MetricCard from '@/components/UI/MetricCard'
@@ -249,6 +249,10 @@ function CostInputSection() {
     })
   }, [costs, recentStats, startStr, endStr])
 
+  const sortedCosts = useMemo(() => {
+    return [...costs].sort((a, b) => b.date.localeCompare(a.date))
+  }, [costs])
+
   const handleSubmit = () => {
     const amount = parseFloat(formAmount)
     if (isNaN(amount) || amount <= 0) return
@@ -264,6 +268,22 @@ function CostInputSection() {
     }
     setTimeout(() => setSubmitMsg(null), 3000)
     setTimeout(() => setIsOpen(false), 400)
+  }
+
+  const handleDelete = (sortedIndex: number) => {
+    const originalIndex = costs.indexOf(sortedCosts[sortedIndex])
+    if (originalIndex === -1) return
+    const next = costs.filter((_, i) => i !== originalIndex)
+    persistCosts(next)
+    const cost = sortedCosts[sortedIndex]
+    const chName = channels.find(c => c.id === cost.channelId)?.name ?? ''
+    const inRange = cost.date >= startStr && cost.date <= endStr
+    if (inRange) {
+      setSubmitMsg({ text: `已删除${chName}成本记录，ROI已重新计算`, type: 'warn' })
+    } else {
+      setSubmitMsg({ text: `已删除${chName}成本记录`, type: 'warn' })
+    }
+    setTimeout(() => setSubmitMsg(null), 3000)
   }
 
   return (
@@ -357,6 +377,68 @@ function CostInputSection() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-brand-border">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-blue/15 text-brand-blue font-medium">
+            记录
+          </span>
+          <h4 className="text-sm font-semibold text-brand-text-primary">成本记录</h4>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-card-hover text-brand-text-muted">
+            {sortedCosts.length}
+          </span>
+        </div>
+
+        {sortedCosts.length === 0 ? (
+          <div className="py-6 text-center">
+            <div className="text-xs text-brand-text-muted">
+              暂无成本记录，点击右上角录入
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-brand-border/50">
+                  <th className="text-left py-2 px-2 text-xs text-brand-text-muted font-medium">渠道</th>
+                  <th className="text-left py-2 px-2 text-xs text-brand-text-muted font-medium">日期</th>
+                  <th className="text-right py-2 px-2 text-xs text-brand-text-muted font-medium">金额</th>
+                  <th className="text-center py-2 px-2 text-xs text-brand-text-muted font-medium w-12">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedCosts.map((cost, idx) => {
+                  const ch = channels.find(c => c.id === cost.channelId)
+                  return (
+                    <tr key={idx} className="border-b border-brand-border/30 last:border-0">
+                      <td className="py-2 px-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ch?.color }} />
+                          <span className="text-xs text-brand-text-secondary">{ch?.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-2 text-xs text-brand-text-muted font-mono">
+                        {cost.date}
+                      </td>
+                      <td className="py-2 px-2 text-right text-xs font-mono text-brand-text-primary">
+                        ¥{cost.amount.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        <button
+                          onClick={() => handleDelete(idx)}
+                          className="p-1.5 rounded-md text-brand-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

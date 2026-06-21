@@ -186,7 +186,7 @@ export default function PersonnelPage() {
                         顾问人数：{d.count}
                       </div>
                       <div style={{ color: '#94A3B8', fontSize: 11, marginTop: 2 }}>
-                        {d.bucketMin >= 1000 ? '≥30分钟' : `${d.bucketMin}-${d.bucketMax === Infinity ? '30' : d.bucketMax}分钟`}
+                        {d.bucketMax === Infinity ? `>${d.bucketMin}分钟` : `${d.bucketMin}-${d.bucketMax}分钟`}
                       </div>
                     </div>
                   )
@@ -199,13 +199,13 @@ export default function PersonnelPage() {
                 ))}
               </Bar>
               <ReferenceLine
-                y={responseData.avgBucketCount}
+                x={responseData.bucketCounts[responseData.avgBucketIndex]?.name}
                 stroke="#FBBF24"
-                strokeDasharray="6 3"
+                strokeDasharray="4 3"
                 strokeWidth={2}
                 label={{
                   value: `均值 ${responseData.overallAvg.toFixed(1)}分钟`,
-                  position: 'right',
+                  position: 'top',
                   fill: '#FBBF24',
                   fontSize: 12,
                   fontWeight: 600,

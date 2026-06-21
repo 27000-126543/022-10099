@@ -5,7 +5,7 @@ import jsPDF from 'jspdf'
 import PageWrapper from '@/components/Layout/PageWrapper'
 import Sparkline from '@/components/Charts/Sparkline'
 import Badge from '@/components/UI/Badge'
-import { monthlyReports, getLatestMonth, getPreviousMonth } from '@/data/reports'
+import { monthlyReports, getLatestMonth } from '@/data/reports'
 import { channels, dailyChannelStats } from '@/data/channels'
 import { projects, dailyProjectStats } from '@/data/projects'
 import { consultants, consultantDaily } from '@/data/consultants'
@@ -57,6 +57,43 @@ function KpiCard({ label, displayValue, value, target, color, icon, large = fals
   )
 }
 
+function TargetCard({ label, current, target, color, icon, fmt }: {
+  label: string; current: number; target: number; color: string; icon: React.ReactNode; fmt: (v: number) => string
+}) {
+  const pct = Math.min(100, Math.round((current / target) * 100))
+  const gap = target - current
+  const isCompleted = current >= target
+  return (
+    <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <span style={{ color }}>{icon}</span>
+        <span className="text-sm font-medium text-brand-text-primary">{label}</span>
+      </div>
+      <div className="mb-4">
+        <div className="flex items-baseline gap-2 mb-1">
+          <span className="font-mono text-2xl font-bold text-brand-text-primary">{fmt(current)}</span>
+          <span className="text-xs text-brand-text-muted">/ {fmt(target)}</span>
+        </div>
+        <div className="h-2 bg-brand-border rounded-full overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <p className="text-brand-text-muted mb-0.5">完成率</p>
+          <p className="font-mono font-semibold" style={{ color }}>{pct}%</p>
+        </div>
+        <div>
+          <p className="text-brand-text-muted mb-0.5">差额</p>
+          <p className={`font-mono font-semibold ${isCompleted ? 'text-emerald-400' : 'text-brand-text-primary'}`}>
+            {isCompleted ? '已达标' : fmt(gap)}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const rankColors = ['text-yellow-400', 'text-gray-300', 'text-amber-600']
 
 function RankItem({ rank, name, value, maxVal, color, fmtVal }: {
@@ -91,8 +128,21 @@ export default function ReportPage() {
   const previous = currentIdx > 0 ? monthlyReports[currentIdx - 1] : null
   const sparkMonths = monthlyReports.slice(Math.max(0, currentIdx - 5), currentIdx + 1)
 
+  const [year, month] = selectedMonth.split('-').map(Number)
+  const sameMonthLastYear = monthlyReports.find(r => r.month === `${year - 1}-${String(month).padStart(2, '0')}`)
+
   const maxLeads = Math.max(...monthlyReports.map(r => r.totalLeads))
   const maxDeal = Math.max(...monthlyReports.map(r => r.totalDealAmount))
+
+  const latestMonth = monthlyReports[monthlyReports.length - 1]
+  const targets = {
+    totalLeads: latestMonth.totalLeads * 1.15,
+    totalDealAmount: latestMonth.totalDealAmount * 1.15,
+    validRate: Math.min(1, latestMonth.validRate * 1.1),
+    bookingRate: Math.min(1, latestMonth.bookingRate * 1.1),
+    arrivalRate: Math.min(1, latestMonth.arrivalRate * 1.1),
+    repeatPurchaseRate: Math.min(1, latestMonth.repeatPurchaseRate * 1.1),
+  }
 
   const channelRoi = useMemo(() => {
     const ms = dailyChannelStats.filter(s => s.date.startsWith(selectedMonth))
@@ -133,14 +183,14 @@ export default function ReportPage() {
     return +((curr - prev) / prev * 100).toFixed(1)
   }
 
-  const momMetrics = [
-    { key: '客资量', curr: current.totalLeads, prev: previous?.totalLeads, spark: sparkMonths.map(r => r.totalLeads), fmt: (v: number) => v.toLocaleString(), sparkColor: '#4A90D9' },
-    { key: '有效率', curr: current.validRate, prev: previous?.validRate, spark: sparkMonths.map(r => r.validRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#FFB347' },
-    { key: '预约率', curr: current.bookingRate, prev: previous?.bookingRate, spark: sparkMonths.map(r => r.bookingRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#4ECDC4' },
-    { key: '到院率', curr: current.arrivalRate, prev: previous?.arrivalRate, spark: sparkMonths.map(r => r.arrivalRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#FF6B6B' },
-    { key: '成交金额', curr: current.totalDealAmount, prev: previous?.totalDealAmount, spark: sparkMonths.map(r => r.totalDealAmount), fmt: (v: number) => fmtWan(v), sparkColor: '#00D4AA' },
-    { key: '复购率', curr: current.repeatPurchaseRate, prev: previous?.repeatPurchaseRate, spark: sparkMonths.map(r => r.repeatPurchaseRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#A78BFA' },
-    { key: '转介绍率', curr: current.referralRate, prev: previous?.referralRate, spark: sparkMonths.map(r => r.referralRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#FF8FA3' },
+  const yoyMetrics = [
+    { key: '客资量', curr: current.totalLeads, prev: previous?.totalLeads, yoy: sameMonthLastYear?.totalLeads, spark: sparkMonths.map(r => r.totalLeads), fmt: (v: number) => v.toLocaleString(), sparkColor: '#4A90D9' },
+    { key: '有效率', curr: current.validRate, prev: previous?.validRate, yoy: sameMonthLastYear?.validRate, spark: sparkMonths.map(r => r.validRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#FFB347' },
+    { key: '预约率', curr: current.bookingRate, prev: previous?.bookingRate, yoy: sameMonthLastYear?.bookingRate, spark: sparkMonths.map(r => r.bookingRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#4ECDC4' },
+    { key: '到院率', curr: current.arrivalRate, prev: previous?.arrivalRate, yoy: sameMonthLastYear?.arrivalRate, spark: sparkMonths.map(r => r.arrivalRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#FF6B6B' },
+    { key: '成交金额', curr: current.totalDealAmount, prev: previous?.totalDealAmount, yoy: sameMonthLastYear?.totalDealAmount, spark: sparkMonths.map(r => r.totalDealAmount), fmt: (v: number) => fmtWan(v), sparkColor: '#00D4AA' },
+    { key: '复购率', curr: current.repeatPurchaseRate, prev: previous?.repeatPurchaseRate, yoy: sameMonthLastYear?.repeatPurchaseRate, spark: sparkMonths.map(r => r.repeatPurchaseRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#A78BFA' },
+    { key: '转介绍率', curr: current.referralRate, prev: previous?.referralRate, yoy: sameMonthLastYear?.referralRate, spark: sparkMonths.map(r => r.referralRate), fmt: (v: number) => (v * 100).toFixed(1) + '%', sparkColor: '#FF8FA3' },
   ]
 
   const handleExport = async () => {
@@ -161,7 +211,7 @@ export default function ReportPage() {
 
   return (
     <PageWrapper>
-      <div ref={reportRef} className="space-y-6 pb-20">
+      <div ref={reportRef} id="report-content" className="space-y-6 pb-20">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-brand-text-primary">月度复盘报告</h1>
@@ -194,26 +244,79 @@ export default function ReportPage() {
         </div>
 
         <div className="bg-brand-card border border-brand-border rounded-xl p-5">
-          <h2 className="text-lg font-bold text-brand-text-primary mb-4">环比对比</h2>
-          <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-6 pb-3 border-b border-brand-border text-xs text-brand-text-muted font-medium">
+          <div className="flex items-center gap-2 mb-4">
+            <Target size={20} className="text-brand-emerald" />
+            <h2 className="text-lg font-bold text-brand-text-primary">目标完成情况</h2>
+          </div>
+          <div className="grid grid-cols-4 gap-4">
+            <TargetCard
+              label="总客资量"
+              current={current.totalLeads}
+              target={targets.totalLeads}
+              color="#4A90D9"
+              icon={<Users size={18} />}
+              fmt={v => v.toLocaleString()}
+            />
+            <TargetCard
+              label="总成交金额"
+              current={current.totalDealAmount}
+              target={targets.totalDealAmount}
+              color="#00D4AA"
+              icon={<DollarSign size={18} />}
+              fmt={v => fmtWan(v)}
+            />
+            <TargetCard
+              label="有效率"
+              current={current.validRate}
+              target={targets.validRate}
+              color="#FFB347"
+              icon={<Target size={18} />}
+              fmt={v => (v * 100).toFixed(1) + '%'}
+            />
+            <TargetCard
+              label="复购贡献率"
+              current={current.repeatPurchaseRate}
+              target={targets.repeatPurchaseRate}
+              color="#A78BFA"
+              icon={<RefreshCw size={18} />}
+              fmt={v => (v * 100).toFixed(1) + '%'}
+            />
+          </div>
+        </div>
+
+        <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+          <h2 className="text-lg font-bold text-brand-text-primary mb-4">环比与同比对比</h2>
+          <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-x-6 pb-3 border-b border-brand-border text-xs text-brand-text-muted font-medium">
             <span>指标</span>
             <span>当月</span>
             <span>上月</span>
-            <span>变化</span>
+            <span>环比</span>
+            <span>同比</span>
             <span>趋势</span>
           </div>
-          {momMetrics.map(m => {
-            const change = calcChange(m.curr, m.prev)
-            const isPositive = change >= 0
+          {yoyMetrics.map(m => {
+            const momChange = calcChange(m.curr, m.prev)
+            const momPositive = momChange >= 0
+            const yoyChange = calcChange(m.curr, m.yoy)
+            const yoyPositive = yoyChange >= 0
+            const hasYoy = m.yoy !== undefined
             return (
-              <div key={m.key} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-6 py-3 border-b border-brand-border/50 items-center">
+              <div key={m.key} className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-x-6 py-3 border-b border-brand-border/50 items-center">
                 <span className="text-sm text-brand-text-primary font-medium">{m.key}</span>
                 <span className="font-mono text-sm text-brand-text-primary">{m.fmt(m.curr)}</span>
                 <span className="font-mono text-sm text-brand-text-muted">{m.prev !== undefined ? m.fmt(m.prev) : '-'}</span>
-                <Badge variant={isPositive ? 'emerald' : 'red'} size="sm">
-                  {isPositive ? <TrendingUp size={12} className="mr-0.5" /> : <TrendingDown size={12} className="mr-0.5" />}
-                  {isPositive ? '+' : ''}{change}%
+                <Badge variant={momPositive ? 'emerald' : 'red'} size="sm">
+                  {momPositive ? <TrendingUp size={12} className="mr-0.5" /> : <TrendingDown size={12} className="mr-0.5" />}
+                  {momPositive ? '+' : ''}{momChange}%
                 </Badge>
+                {hasYoy ? (
+                  <Badge variant={yoyPositive ? 'emerald' : 'red'} size="sm">
+                    {yoyPositive ? <TrendingUp size={12} className="mr-0.5" /> : <TrendingDown size={12} className="mr-0.5" />}
+                    {yoyPositive ? '+' : ''}{yoyChange}%
+                  </Badge>
+                ) : (
+                  <span className="font-mono text-sm text-brand-text-muted">-</span>
+                )}
                 <Sparkline data={m.spark} color={m.sparkColor} width={80} height={30} showArea />
               </div>
             )
