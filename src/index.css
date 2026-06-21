@@ -1,0 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #F1F5F9;
+  background-color: #0B1120;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0B1120;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #0B1120;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0B1120;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@layer components {
+  .card {
+    @apply bg-brand-card border border-brand-border rounded-xl p-5 transition-all duration-200;
+  }
+
+  .card-hover:hover {
+    @apply bg-brand-card-hover border-brand-border-light shadow-lg shadow-black/20;
+  }
+
+  .metric-value {
+    @apply font-mono text-3xl font-bold text-brand-text-primary tracking-tight;
+  }
+
+  .metric-label {
+    @apply text-xs text-brand-text-muted font-medium uppercase tracking-wider;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-emerald {
+    @apply badge bg-brand-emerald/15 text-brand-emerald;
+  }
+
+  .badge-amber {
+    @apply badge bg-brand-amber/15 text-brand-amber;
+  }
+
+  .badge-red {
+    @apply badge bg-brand-red/15 text-brand-red;
+  }
+
+  .badge-blue {
+    @apply badge bg-brand-blue/15 text-brand-blue;
+  }
+
+  .badge-gray {
+    @apply badge bg-brand-gray/15 text-brand-gray-light;
+  }
+
+  .section-title {
+    @apply text-sm font-semibold text-brand-text-secondary uppercase tracking-wider mb-4;
+  }
+
+  .glow-emerald {
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.15);
+  }
+
+  .glow-red {
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.15);
+  }
+
+  .glow-amber {
+    box-shadow: 0 0 20px rgba(245, 166, 35, 0.15);
+  }
+}
+
+@layer utilities {
+  .text-gradient-emerald {
+    background: linear-gradient(135deg, #00D4AA, #00B894);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-amber {
+    background: linear-gradient(135deg, #F5A623, #E8930C);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-card {
+    background: linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(30, 41, 59, 0.5));
+  }
+
+  .bg-noise {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+  }
+}
