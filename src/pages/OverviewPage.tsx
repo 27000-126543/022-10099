@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, CheckCircle2, Zap, CalendarCheck, Building2, DollarSign, Target, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { UserPlus, CheckCircle2, Zap, CalendarCheck, Building2, DollarSign, Target, TrendingUp, TrendingDown, AlertTriangle, X } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ComposedChart, Line, Area, CartesianGrid, ReferenceLine } from 'recharts'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import PageWrapper from '@/components/Layout/PageWrapper'
@@ -41,6 +41,7 @@ function getDateRange(key: DateRangeKey): { start: string; end: string } {
 export default function OverviewPage() {
   const navigate = useNavigate()
   const [dateRange, setDateRange] = useState<DateRangeKey>('7d')
+  const [selectedTargetMetric, setSelectedTargetMetric] = useState<'leads' | 'dealAmount' | 'validRate' | null>(null)
 
   const { start, end } = useMemo(() => getDateRange(dateRange), [dateRange])
 
@@ -105,6 +106,63 @@ export default function OverviewPage() {
       },
     }
   }, [monthTarget, currentMonthStats])
+
+  const breakdownChartData = useMemo(() => {
+    if (!selectedTargetMetric || !monthTarget) return []
+
+    const rangeStats = getChannelStatsByDateRange(start, end)
+    const now = new Date()
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+
+    const byDate: Record<string, { newLeads: number; validLeads: number; dealAmount: number }> = {}
+    for (const s of rangeStats) {
+      if (!byDate[s.date]) byDate[s.date] = { newLeads: 0, validLeads: 0, dealAmount: 0 }
+      byDate[s.date].newLeads += s.newLeads
+      byDate[s.date].validLeads += s.validLeads
+      byDate[s.date].dealAmount += s.dealAmount
+    }
+
+    const dates = Object.keys(byDate).sort()
+    let cumActual = 0
+    let cumExpected = 0
+
+    return dates.map(date => {
+      const d = byDate[date]
+      let actual: number
+      let expected: number
+
+      if (selectedTargetMetric === 'leads') {
+        actual = d.newLeads
+        expected = monthTarget.totalLeads / daysInMonth
+      } else if (selectedTargetMetric === 'dealAmount') {
+        actual = d.dealAmount
+        expected = monthTarget.totalDealAmount / daysInMonth
+      } else {
+        actual = d.newLeads > 0 ? d.validLeads / d.newLeads : 0
+        expected = monthTarget.validRate
+      }
+
+      if (selectedTargetMetric === 'validRate') {
+        cumActual = actual
+        cumExpected = expected
+      } else {
+        cumActual += actual
+        cumExpected += expected
+      }
+
+      const cumGap = cumExpected - cumActual
+      const negGap = cumGap < 0 ? cumGap : 0
+
+      return {
+        date: date.slice(5),
+        actual,
+        expected,
+        cumGap: selectedTargetMetric === 'validRate' ? (actual < expected ? actual - expected : 0) : negGap,
+        cumActual,
+        cumExpected,
+      }
+    })
+  }, [selectedTargetMetric, monthTarget, start, end])
 
   const metrics = useMemo(() => {
     const totalNewLeads = channelStats.reduce((s, c) => s + c.newLeads, 0)
@@ -254,7 +312,7 @@ export default function OverviewPage() {
               <h3 className="text-sm font-medium text-brand-text-muted uppercase tracking-wider">目标进度</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+              <button onClick={() => setSelectedTargetMetric('leads')} className="text-left bg-brand-card border border-brand-border rounded-xl p-5 hover:border-emerald-400/50 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Target size={14} className="text-emerald-400" />
@@ -286,9 +344,9 @@ export default function OverviewPage() {
                 <div className="text-xs text-brand-text-muted">
                   {targetProgress.leads.gap > 0 ? `还差 ${targetProgress.leads.gap.toLocaleString()}` : '已达标'}
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+              <button onClick={() => setSelectedTargetMetric('dealAmount')} className="text-left bg-brand-card border border-brand-border rounded-xl p-5 hover:border-amber-400/50 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Target size={14} className="text-amber-400" />
@@ -320,9 +378,9 @@ export default function OverviewPage() {
                 <div className="text-xs text-brand-text-muted">
                   {targetProgress.dealAmount.gap > 0 ? `还差 ¥${Math.round(targetProgress.dealAmount.gap).toLocaleString()}` : '已达标'}
                 </div>
-              </div>
+              </button>
 
-              <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+              <button onClick={() => setSelectedTargetMetric('validRate')} className="text-left bg-brand-card border border-brand-border rounded-xl p-5 hover:border-blue-400/50 transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Target size={14} className="text-blue-400" />
@@ -354,8 +412,108 @@ export default function OverviewPage() {
                 <div className="text-xs text-brand-text-muted">
                   {targetProgress.validRate.gap > 0 ? `还差 ${(targetProgress.validRate.gap * 100).toFixed(1)}%` : '已达标'}
                 </div>
-              </div>
+              </button>
             </div>
+
+            {selectedTargetMetric && breakdownChartData.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 bg-brand-card border border-brand-border rounded-xl p-5"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Target size={14} className={
+                      selectedTargetMetric === 'leads' ? 'text-emerald-400' :
+                      selectedTargetMetric === 'dealAmount' ? 'text-amber-400' : 'text-blue-400'
+                    } />
+                    <span className="text-sm font-medium text-brand-text-primary">
+                      {selectedTargetMetric === 'leads' ? '客资量' : selectedTargetMetric === 'dealAmount' ? '成交金额' : '有效率'}每日明细
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedTargetMetric(null)}
+                    className="p-1 rounded-md hover:bg-brand-border/50 text-brand-text-muted transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={breakdownChartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="date" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={{ stroke: '#334155' }} />
+                    <YAxis yAxisId="main" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={{ stroke: '#334155' }} />
+                    <YAxis yAxisId="gap" orientation="right" tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={{ stroke: '#334155' }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1E293B',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                        color: '#F1F5F9',
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number, name: string) => {
+                        if (name === 'actual') return [selectedTargetMetric === 'validRate' ? `${(value * 100).toFixed(1)}%` : value.toLocaleString(), '实际']
+                        if (name === 'expected') return [selectedTargetMetric === 'validRate' ? `${(value * 100).toFixed(1)}%` : Math.round(value).toLocaleString(), '期望']
+                        if (name === 'cumGap') return [Math.round(value).toLocaleString(), '累计缺口']
+                        return [value, name]
+                      }}
+                    />
+                    <Bar yAxisId="main" dataKey="actual" fill={
+                      selectedTargetMetric === 'leads' ? '#10B981' :
+                      selectedTargetMetric === 'dealAmount' ? '#F59E0B' : '#3B82F6'
+                    } fillOpacity={0.7} radius={[2, 2, 0, 0]} barSize={16} />
+                    {selectedTargetMetric === 'validRate' ? (
+                      <ReferenceLine yAxisId="main" y={monthTarget.validRate} stroke="#F59E0B" strokeDasharray="6 3" label={{ value: '目标', fill: '#F59E0B', fontSize: 11 }} />
+                    ) : (
+                      <Line yAxisId="main" type="monotone" dataKey="expected" stroke="#F59E0B" strokeDasharray="6 3" dot={false} strokeWidth={1.5} />
+                    )}
+                    <Area yAxisId="gap" type="monotone" dataKey="cumGap" fill="#EF4444" fillOpacity={0.15} stroke="#EF4444" strokeOpacity={0.4} strokeWidth={1} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+
+                <div className="flex items-center gap-6 mt-3 pt-3 border-t border-brand-border text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-brand-text-muted">累计实际:</span>
+                    <span className="text-brand-text-primary font-medium">
+                      {selectedTargetMetric === 'validRate'
+                        ? `${(breakdownChartData[breakdownChartData.length - 1].cumActual * 100).toFixed(1)}%`
+                        : selectedTargetMetric === 'dealAmount'
+                          ? `¥${Math.round(breakdownChartData[breakdownChartData.length - 1].cumActual).toLocaleString()}`
+                          : breakdownChartData[breakdownChartData.length - 1].cumActual.toLocaleString()
+                      }
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-brand-text-muted">累计应完成:</span>
+                    <span className="text-brand-text-primary font-medium">
+                      {selectedTargetMetric === 'validRate'
+                        ? `${(breakdownChartData[breakdownChartData.length - 1].cumExpected * 100).toFixed(1)}%`
+                        : selectedTargetMetric === 'dealAmount'
+                          ? `¥${Math.round(breakdownChartData[breakdownChartData.length - 1].cumExpected).toLocaleString()}`
+                          : Math.round(breakdownChartData[breakdownChartData.length - 1].cumExpected).toLocaleString()
+                      }
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-brand-text-muted">累计缺口:</span>
+                    <span className={cn(
+                      'font-medium',
+                      breakdownChartData[breakdownChartData.length - 1].cumGap > 0 ? 'text-red-400' : 'text-emerald-400'
+                    )}>
+                      {selectedTargetMetric === 'validRate'
+                        ? `${(Math.abs(breakdownChartData[breakdownChartData.length - 1].cumGap) * 100).toFixed(1)}%`
+                        : selectedTargetMetric === 'dealAmount'
+                          ? `¥${Math.round(Math.abs(breakdownChartData[breakdownChartData.length - 1].cumGap)).toLocaleString()}`
+                          : Math.round(Math.abs(breakdownChartData[breakdownChartData.length - 1].cumGap)).toLocaleString()
+                      }
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
         )}
 

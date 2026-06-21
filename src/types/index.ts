@@ -68,6 +68,7 @@ export interface AlertItem {
   consultantId?: string
   channelId?: string
   projectId?: string
+  targetMonth?: string
 }
 
 export interface MonthlyReport {

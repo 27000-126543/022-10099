@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo } from 'react'
-import { Download, ChevronDown, TrendingUp, TrendingDown, Users, DollarSign, Target, CalendarCheck, MapPin, RefreshCw, Settings } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { Download, ChevronDown, TrendingUp, TrendingDown, Users, DollarSign, Target, CalendarCheck, MapPin, RefreshCw, Settings, Copy, Percent } from 'lucide-react'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import PageWrapper from '@/components/Layout/PageWrapper'
@@ -9,7 +10,7 @@ import { monthlyReports, getLatestMonth } from '@/data/reports'
 import { channels, dailyChannelStats } from '@/data/channels'
 import { projects, dailyProjectStats } from '@/data/projects'
 import { consultants, consultantDaily } from '@/data/consultants'
-import { loadTargets, saveTargets, type MonthlyTarget } from '@/data/targets'
+import { loadTargets, saveTargets, getDefaultTargets, type MonthlyTarget } from '@/data/targets'
 import Modal from '@/components/UI/Modal'
 
 function fmtWan(v: number): string {
@@ -59,17 +60,23 @@ function KpiCard({ label, displayValue, value, target, color, icon, large = fals
   )
 }
 
-function TargetCard({ label, current, target, color, icon, fmt }: {
-  label: string; current: number; target: number; color: string; icon: React.ReactNode; fmt: (v: number) => string
+function TargetCard({ label, current, target, originalTarget, color, icon, fmt }: {
+  label: string; current: number; target: number; originalTarget?: number; color: string; icon: React.ReactNode; fmt: (v: number) => string
 }) {
   const pct = Math.min(100, Math.round((current / target) * 100))
   const gap = target - current
   const isCompleted = current >= target
+  const hasAdjust = originalTarget !== undefined && originalTarget !== target
   return (
     <div className="bg-brand-card border border-brand-border rounded-xl p-5">
       <div className="flex items-center gap-2 mb-4">
         <span style={{ color }}>{icon}</span>
         <span className="text-sm font-medium text-brand-text-primary">{label}</span>
+        {hasAdjust && (
+          <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-brand-amber/15 text-brand-amber font-medium">
+            已调整
+          </span>
+        )}
       </div>
       <div className="mb-4">
         <div className="flex items-baseline gap-2 mb-1">
@@ -80,6 +87,18 @@ function TargetCard({ label, current, target, color, icon, fmt }: {
           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
         </div>
       </div>
+      {hasAdjust && (
+        <div className="mb-3 px-2.5 py-1.5 bg-brand-card-hover rounded-lg border border-brand-border/50">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-brand-text-muted">原目标</span>
+            <span className="font-mono text-brand-text-muted line-through">{fmt(originalTarget!)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[10px] mt-0.5">
+            <span className="text-brand-text-muted">调整后</span>
+            <span className="font-mono text-brand-amber">{fmt(target)}</span>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div>
           <p className="text-brand-text-muted mb-0.5">完成率</p>
@@ -121,7 +140,10 @@ function RankItem({ rank, name, value, maxVal, color, fmtVal }: {
 }
 
 export default function ReportPage() {
-  const [selectedMonth, setSelectedMonth] = useState(getLatestMonth().month)
+  const location = useLocation()
+  const [selectedMonth, setSelectedMonth] = useState(
+    (location.state as { month?: string })?.month ?? getLatestMonth().month
+  )
   const reportRef = useRef<HTMLDivElement>(null)
   const [exporting, setExporting] = useState(false)
   const [targetConfig, setTargetConfig] = useState<MonthlyTarget[]>(() => loadTargets())
@@ -139,12 +161,20 @@ export default function ReportPage() {
   const maxLeads = Math.max(...monthlyReports.map(r => r.totalLeads))
   const maxDeal = Math.max(...monthlyReports.map(r => r.totalDealAmount))
 
+  const defaultTargetsList = getDefaultTargets()
+  const monthDefaultTarget = defaultTargetsList.find(t => t.month === selectedMonth)
   const monthTarget = targetConfig.find(t => t.month === selectedMonth)
   const targets = {
     totalLeads: monthTarget?.totalLeads ?? current.totalLeads * 1.15,
     totalDealAmount: monthTarget?.totalDealAmount ?? current.totalDealAmount * 1.15,
     validRate: monthTarget?.validRate ?? Math.min(1, current.validRate * 1.1),
     repeatPurchaseRate: monthTarget?.repeatPurchaseRate ?? Math.min(1, current.repeatPurchaseRate * 1.1),
+  }
+  const originalTargets = {
+    totalLeads: monthDefaultTarget?.totalLeads,
+    totalDealAmount: monthDefaultTarget?.totalDealAmount,
+    validRate: monthDefaultTarget?.validRate,
+    repeatPurchaseRate: monthDefaultTarget?.repeatPurchaseRate,
   }
 
   const channelRoi = useMemo(() => {
@@ -269,6 +299,7 @@ export default function ReportPage() {
               label="总客资量"
               current={current.totalLeads}
               target={targets.totalLeads}
+              originalTarget={originalTargets.totalLeads}
               color="#4A90D9"
               icon={<Users size={18} />}
               fmt={v => v.toLocaleString()}
@@ -277,6 +308,7 @@ export default function ReportPage() {
               label="总成交金额"
               current={current.totalDealAmount}
               target={targets.totalDealAmount}
+              originalTarget={originalTargets.totalDealAmount}
               color="#00D4AA"
               icon={<DollarSign size={18} />}
               fmt={v => fmtWan(v)}
@@ -285,6 +317,7 @@ export default function ReportPage() {
               label="有效率"
               current={current.validRate}
               target={targets.validRate}
+              originalTarget={originalTargets.validRate}
               color="#FFB347"
               icon={<Target size={18} />}
               fmt={v => (v * 100).toFixed(1) + '%'}
@@ -293,6 +326,7 @@ export default function ReportPage() {
               label="复购贡献率"
               current={current.repeatPurchaseRate}
               target={targets.repeatPurchaseRate}
+              originalTarget={originalTargets.repeatPurchaseRate}
               color="#A78BFA"
               icon={<RefreshCw size={18} />}
               fmt={v => (v * 100).toFixed(1) + '%'}
@@ -370,6 +404,43 @@ export default function ReportPage() {
       >
         {editingTarget && (
           <div className="space-y-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const prevMonthIdx = monthlyReports.findIndex(r => r.month === selectedMonth)
+                  if (prevMonthIdx <= 0) return
+                  const prevMonth = monthlyReports[prevMonthIdx - 1].month
+                  const prevTarget = targetConfig.find(t => t.month === prevMonth) ?? getDefaultTargets().find(t => t.month === prevMonth)
+                  if (prevTarget) {
+                    setEditingTarget({ ...editingTarget, totalLeads: prevTarget.totalLeads, totalDealAmount: prevTarget.totalDealAmount, validRate: prevTarget.validRate, repeatPurchaseRate: prevTarget.repeatPurchaseRate })
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-card-hover border border-brand-border text-brand-text-muted hover:text-brand-text-primary hover:border-brand-emerald/50 transition-colors"
+              >
+                <Copy size={12} />
+                复制上月目标
+              </button>
+              <button
+                onClick={() => {
+                  const pctStr = prompt('输入批量调整百分比（如 10 表示上调10%，-5 表示下调5%）')
+                  if (pctStr === null) return
+                  const pctVal = parseFloat(pctStr)
+                  if (isNaN(pctVal)) return
+                  const factor = 1 + pctVal / 100
+                  setEditingTarget({
+                    ...editingTarget,
+                    totalLeads: Math.round(editingTarget.totalLeads * factor),
+                    totalDealAmount: Math.round(editingTarget.totalDealAmount * factor),
+                    validRate: Math.min(1, parseFloat((editingTarget.validRate * factor).toFixed(4))),
+                    repeatPurchaseRate: Math.min(1, parseFloat((editingTarget.repeatPurchaseRate * factor).toFixed(4))),
+                  })
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-card-hover border border-brand-border text-brand-text-muted hover:text-brand-text-primary hover:border-brand-amber/50 transition-colors"
+              >
+                <Percent size={12} />
+                批量调整百分比
+              </button>
+            </div>
             <div>
               <label className="block text-sm text-brand-text-muted mb-1">客资目标</label>
               <input

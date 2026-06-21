@@ -12,9 +12,11 @@ import {
   ReferenceLine,
   CartesianGrid,
   Cell,
+  ComposedChart,
+  Area,
 } from 'recharts'
 import { motion, AnimatePresence } from 'framer-motion'
-import { DollarSign, TrendingUp, ChevronDown, ChevronRight, Users, Trash2 } from 'lucide-react'
+import { DollarSign, TrendingUp, ChevronDown, ChevronRight, Users, Trash2, Settings } from 'lucide-react'
 import { channels, dailyChannelStats, getChannelStatsByDateRange } from '@/data/channels'
 import PageWrapper from '@/components/Layout/PageWrapper'
 import MetricCard from '@/components/UI/MetricCard'
@@ -28,6 +30,21 @@ interface CostEntry {
   channelId: string
   amount: number
   date: string
+}
+
+interface ChannelBudgetConfig {
+  channelId: string
+  monthlyBudget: number
+  roiThreshold: number
+}
+
+export function getChannelBudgetConfig(): ChannelBudgetConfig[] {
+  try {
+    const raw = localStorage.getItem('channel_budget_config')
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
 }
 
 interface LeadDetailRow {
@@ -218,6 +235,16 @@ function CostInputSection() {
   const [formAmount, setFormAmount] = useState('')
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0])
   const [submitMsg, setSubmitMsg] = useState<{ text: string; type: 'ok' | 'warn' } | null>(null)
+  const [budgetConfig, setBudgetConfig] = useState<ChannelBudgetConfig[]>(() => {
+    try {
+      const raw = localStorage.getItem('channel_budget_config')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
+  const [isBudgetConfigOpen, setIsBudgetConfigOpen] = useState(false)
+  const [budgetForm, setBudgetForm] = useState<ChannelBudgetConfig[]>([])
 
   const today = new Date()
   const sevenDaysAgo = new Date(today)
@@ -233,6 +260,28 @@ function CostInputSection() {
     } catch {
       /* ignore quota errors */
     }
+  }
+
+  const openBudgetConfig = () => {
+    const paidChannels = channels.filter(ch => ch.dailyCost > 0)
+    const form = paidChannels.map(ch => {
+      const existing = budgetConfig.find(c => c.channelId === ch.id)
+      return {
+        channelId: ch.id,
+        monthlyBudget: existing?.monthlyBudget ?? ch.dailyCost * 30,
+        roiThreshold: existing?.roiThreshold ?? 1.0,
+      }
+    })
+    setBudgetForm(form)
+    setIsBudgetConfigOpen(true)
+  }
+
+  const handleBudgetConfigSave = () => {
+    setBudgetConfig(budgetForm)
+    try {
+      localStorage.setItem('channel_budget_config', JSON.stringify(budgetForm))
+    } catch {}
+    setIsBudgetConfigOpen(false)
   }
 
   const roiData = useMemo(() => {
@@ -260,7 +309,9 @@ function CostInputSection() {
     return channels
       .filter(ch => ch.dailyCost > 0)
       .map(ch => {
-        const monthlyBudget = ch.dailyCost * daysInMonth
+        const budgetCfg = budgetConfig.find(c => c.channelId === ch.id)
+        const monthlyBudget = budgetCfg?.monthlyBudget ?? (ch.dailyCost * daysInMonth)
+        const roiThreshold = budgetCfg?.roiThreshold ?? 1.0
         const monthCosts = costs.filter(c => c.channelId === ch.id && c.date.startsWith(currentMonth))
         const customSpent = monthCosts.reduce((sum, c) => sum + c.amount, 0)
         const spent = customSpent > 0 ? customSpent : ch.dailyCost * daysElapsed
@@ -280,12 +331,79 @@ function CostInputSection() {
           dealAmount,
           roi,
           percentage,
+          roiThreshold,
         }
       })
-  }, [costs])
+  }, [costs, budgetConfig])
 
   const sortedCosts = useMemo(() => {
     return [...costs].sort((a, b) => b.date.localeCompare(a.date))
+  }, [costs])
+
+  const budgetTrendData = useMemo(() => {
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const daysElapsed = now.getDate()
+    const paidChannels = channels.filter(ch => ch.dailyCost > 0)
+
+    return Array.from({ length: daysElapsed }, (_, i) => {
+      const day = i + 1
+      const dateStr = `${currentMonth}-${String(day).padStart(2, '0')}`
+
+      let totalDailyCost = 0
+      let totalCumSpent = 0
+      let totalBudget = 0
+
+      paidChannels.forEach(ch => {
+        const budgetCfg = budgetConfig.find(c => c.channelId === ch.id)
+        const monthlyBudget = budgetCfg?.monthlyBudget ?? (ch.dailyCost * daysInMonth)
+        totalBudget += monthlyBudget
+
+        const dayCosts = costs.filter(c => c.channelId === ch.id && c.date === dateStr)
+        const dailyCost = dayCosts.length > 0
+          ? dayCosts.reduce((sum, c) => sum + c.amount, 0)
+          : ch.dailyCost
+        totalDailyCost += dailyCost
+
+        const cumCosts = costs.filter(c => c.channelId === ch.id && c.date >= `${currentMonth}-01` && c.date <= dateStr)
+        const customSpent = cumCosts.reduce((sum, c) => sum + c.amount, 0)
+        totalCumSpent += customSpent > 0 ? customSpent : ch.dailyCost * day
+      })
+
+      return {
+        date: `${day}日`,
+        dailyCost: totalDailyCost,
+        consumptionPercent: totalBudget > 0 ? parseFloat(((totalCumSpent / totalBudget) * 100).toFixed(1)) : 0,
+      }
+    })
+  }, [costs, budgetConfig])
+
+  const roiTrendData = useMemo(() => {
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const daysElapsed = now.getDate()
+    const monthStats = dailyChannelStats.filter(s => s.date.startsWith(currentMonth))
+    const paidChannels = channels.filter(ch => ch.dailyCost > 0)
+
+    return Array.from({ length: daysElapsed }, (_, i) => {
+      const day = i + 1
+      const dateStr = `${currentMonth}-${String(day).padStart(2, '0')}`
+      const entry: Record<string, string | number> = { date: `${day}日` }
+
+      paidChannels.forEach(ch => {
+        const dayStats = monthStats.filter(s => s.channelId === ch.id && s.date === dateStr)
+        const dealAmount = dayStats.reduce((sum, s) => sum + s.dealAmount, 0)
+        const dayCosts = costs.filter(c => c.channelId === ch.id && c.date === dateStr)
+        const dailyCost = dayCosts.length > 0
+          ? dayCosts.reduce((sum, c) => sum + c.amount, 0)
+          : ch.dailyCost
+        const roi = dailyCost > 0 ? dealAmount / dailyCost : 0
+        entry[ch.id] = parseFloat(roi.toFixed(2))
+      })
+
+      return entry
+    })
   }, [costs])
 
   const handleSubmit = () => {
@@ -325,13 +443,22 @@ function CostInputSection() {
     <div className="bg-brand-card border border-brand-border rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-brand-text-primary">成本与ROI</h3>
-        <button
-          onClick={() => setIsOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-emerald/15 text-brand-emerald hover:bg-brand-emerald/25 transition-colors"
-        >
-          <DollarSign size={14} />
-          录入成本
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openBudgetConfig}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-blue/15 text-brand-blue hover:bg-brand-blue/25 transition-colors"
+          >
+            <Settings size={14} />
+            配置预算
+          </button>
+          <button
+            onClick={() => setIsOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-emerald/15 text-brand-emerald hover:bg-brand-emerald/25 transition-colors"
+          >
+            <DollarSign size={14} />
+            录入成本
+          </button>
+        </div>
       </div>
 
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="录入成本">
@@ -372,6 +499,57 @@ function CostInputSection() {
             className="w-full py-2 text-sm font-medium rounded-lg bg-brand-emerald text-white hover:bg-brand-emerald/90 transition-colors"
           >
             确认录入
+          </button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isBudgetConfigOpen} onClose={() => setIsBudgetConfigOpen(false)} title="配置预算">
+        <div className="space-y-4">
+          {budgetForm.map((item, idx) => {
+            const ch = channels.find(c => c.id === item.channelId)
+            return (
+              <div key={item.channelId} className="space-y-2 pb-3 border-b border-brand-border/30 last:border-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ch?.color }} />
+                  <span className="text-sm text-brand-text-primary">{ch?.name}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-brand-text-muted mb-1">月度预算 (元)</label>
+                    <input
+                      type="number"
+                      value={item.monthlyBudget}
+                      onChange={e => {
+                        const next = [...budgetForm]
+                        next[idx] = { ...next[idx], monthlyBudget: parseFloat(e.target.value) || 0 }
+                        setBudgetForm(next)
+                      }}
+                      className="w-full bg-brand-card-hover border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text-primary focus:outline-none focus:border-brand-emerald"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-brand-text-muted mb-1">ROI阈值</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={item.roiThreshold}
+                      onChange={e => {
+                        const next = [...budgetForm]
+                        next[idx] = { ...next[idx], roiThreshold: parseFloat(e.target.value) || 0 }
+                        setBudgetForm(next)
+                      }}
+                      className="w-full bg-brand-card-hover border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text-primary focus:outline-none focus:border-brand-emerald"
+                    />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          <button
+            onClick={handleBudgetConfigSave}
+            className="w-full py-2 text-sm font-medium rounded-lg bg-brand-emerald text-white hover:bg-brand-emerald/90 transition-colors"
+          >
+            保存配置
           </button>
         </div>
       </Modal>
@@ -493,6 +671,121 @@ function CostInputSection() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-brand-border">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-amber/15 text-brand-amber font-medium">
+            趋势
+          </span>
+          <h4 className="text-sm font-semibold text-brand-text-primary">预算消耗趋势</h4>
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <ComposedChart data={budgetTrendData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: '#64748B', fontSize: 11 }}
+              axisLine={{ stroke: '#1E293B' }}
+              tickLine={false}
+            />
+            <YAxis
+              yAxisId="cost"
+              tick={{ fill: '#64748B', fontSize: 11 }}
+              axisLine={{ stroke: '#1E293B' }}
+              tickLine={false}
+            />
+            <YAxis
+              yAxisId="percent"
+              orientation="right"
+              tick={{ fill: '#64748B', fontSize: 11 }}
+              axisLine={{ stroke: '#1E293B' }}
+              tickLine={false}
+              unit="%"
+              domain={[0, 120]}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#0F172A',
+                border: '1px solid #1E293B',
+                borderRadius: '8px',
+                fontSize: '12px',
+              }}
+              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
+              formatter={(value: number, name: string) => {
+                if (name === 'consumptionPercent') return [`${value}%`, '预算消耗率']
+                return [`¥${value.toLocaleString()}`, '日成本']
+              }}
+            />
+            <Legend
+              formatter={(value: string) => {
+                if (value === 'dailyCost') return <span style={{ color: '#64748B', fontSize: '12px' }}>日成本</span>
+                if (value === 'consumptionPercent') return <span style={{ color: '#F59E0B', fontSize: '12px' }}>预算消耗率</span>
+                return <span style={{ color: '#94A3B8', fontSize: '12px' }}>{value}</span>
+              }}
+            />
+            <Bar yAxisId="cost" dataKey="dailyCost" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={24} opacity={0.6} />
+            <Line yAxisId="percent" type="monotone" dataKey="consumptionPercent" stroke="#F59E0B" strokeWidth={2} dot={false} />
+            <ReferenceLine yAxisId="percent" y={80} stroke="#F59E0B" strokeDasharray="6 4" label={{ value: '80%', fill: '#F59E0B', fontSize: 10, position: 'right' }} />
+            <ReferenceLine yAxisId="percent" y={100} stroke="#EF4444" strokeDasharray="6 4" label={{ value: '100%', fill: '#EF4444', fontSize: 10, position: 'right' }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-brand-border">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-emerald/15 text-brand-emerald font-medium">
+            ROI
+          </span>
+          <h4 className="text-sm font-semibold text-brand-text-primary">ROI回收趋势</h4>
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <ComposedChart data={roiTrendData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: '#64748B', fontSize: 11 }}
+              axisLine={{ stroke: '#1E293B' }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: '#64748B', fontSize: 11 }}
+              axisLine={{ stroke: '#1E293B' }}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#0F172A',
+                border: '1px solid #1E293B',
+                borderRadius: '8px',
+                fontSize: '12px',
+              }}
+              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
+              formatter={(value: number, name: string) => {
+                const ch = channels.find(c => c.id === name)
+                return [value.toFixed(2), ch?.name ?? name]
+              }}
+            />
+            <Legend
+              formatter={(value: string) => {
+                const ch = channels.find(c => c.id === value)
+                return <span style={{ color: ch?.color ?? '#94A3B8', fontSize: '12px' }}>{ch?.name ?? value}</span>
+              }}
+            />
+            <ReferenceLine y={1.0} stroke="#EF4444" strokeDasharray="6 4" label={{ value: 'ROI阈值 1.0', fill: '#EF4444', fontSize: 10, position: 'right' }} />
+            {channels.filter(ch => ch.dailyCost > 0).map(ch => (
+              <Line
+                key={ch.id}
+                type="monotone"
+                dataKey={ch.id}
+                stroke={ch.color}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, fill: ch.color }}
+              />
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="mt-5 pt-4 border-t border-brand-border">

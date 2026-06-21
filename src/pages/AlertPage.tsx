@@ -151,7 +151,13 @@ export default function AlertPage() {
                     if (alert.type === 'overdue') {
                       setSelectedOverdueId(prev => prev === alert.id ? null : alert.id)
                     } else if (alert.type === 'target_risk') {
-                      navigate(alert.channelId ? '/channel' : '/report')
+                      if (alert.channelId) {
+                        navigate('/channel')
+                      } else if (alert.targetMonth) {
+                        navigate('/report', { state: { month: alert.targetMonth } })
+                      } else {
+                        navigate('/report')
+                      }
                     }
                   }}
                 />

@@ -1,4 +1,6 @@
 import type { AlertItem } from '@/types'
+import { loadTargets } from '@/data/targets'
+import { channels, dailyChannelStats } from '@/data/channels'
 
 export const alerts: AlertItem[] = [
   {
@@ -100,59 +102,125 @@ export const alerts: AlertItem[] = [
     resolved: true,
     projectId: 'skin',
   },
-  {
-    id: 'a11',
-    type: 'target_risk',
-    severity: 'high',
-    title: '成交金额低于进度',
-    description: '本月成交金额仅完成目标的42%，按当前节奏月底预计仅达78%，存在缺口风险',
-    date: new Date().toISOString().split('T')[0],
-    resolved: false,
-  },
-  {
-    id: 'a12',
-    type: 'target_risk',
-    severity: 'high',
-    title: '客资量目标进度落后',
-    description: '本月客资量仅完成目标的45%，按当前日均推算月底预计缺口约120条',
-    date: new Date().toISOString().split('T')[0],
-    resolved: false,
-  },
-  {
-    id: 'a13',
-    type: 'target_risk',
-    severity: 'medium',
-    title: '短视频ROI连续低于阈值',
-    description: '短视频渠道ROI连续5天低于1.0，当前0.82，建议评估投放策略',
-    date: new Date().toISOString().split('T')[0],
-    resolved: false,
-    channelId: 'dy',
-  },
-  {
-    id: 'a14',
-    type: 'target_risk',
-    severity: 'medium',
-    title: '小红书ROI连续低于阈值',
-    description: '小红书渠道ROI连续3天低于0.9，当前0.76，需关注内容质量',
-    date: new Date().toISOString().split('T')[0],
-    resolved: false,
-    channelId: 'xhs',
-  },
-  {
-    id: 'a15',
-    type: 'target_risk',
-    severity: 'low',
-    title: '有效率目标进度偏慢',
-    description: '本月有效率67.5%，低于目标80%，建议优化渠道筛选条件',
-    date: new Date().toISOString().split('T')[0],
-    resolved: false,
-  },
 ]
 
+export function generateTargetRiskAlerts(): AlertItem[] {
+  const result: AlertItem[] = []
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const targets = loadTargets()
+  const monthTarget = targets.find(t => t.month === currentMonth)
+  const today = now.toISOString().split('T')[0]
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysElapsed = now.getDate()
+  const progressRatio = daysElapsed / daysInMonth
+
+  if (monthTarget && monthTarget.totalDealAmount > 0) {
+    const monthStats = dailyChannelStats.filter(s => s.date.startsWith(currentMonth))
+    const actualDealAmount = monthStats.reduce((sum, s) => sum + s.dealAmount, 0)
+    const expectedDealAmount = progressRatio * monthTarget.totalDealAmount
+    const completionRatio = actualDealAmount / monthTarget.totalDealAmount
+
+    if (actualDealAmount < expectedDealAmount && completionRatio < 0.8) {
+      const pct = Math.round(completionRatio * 100)
+      const severity: AlertItem['severity'] = completionRatio < 0.6 ? 'high' : 'medium'
+      result.push({
+        id: `tr_deal_${currentMonth}`,
+        type: 'target_risk',
+        severity,
+        title: '成交金额低于进度',
+        description: `${currentMonth}月成交金额仅完成目标的${pct}%，按当前节奏月底预计存在缺口风险`,
+        date: today,
+        resolved: false,
+        targetMonth: currentMonth,
+      })
+    }
+  }
+
+  let budgetConfig: { channelId: string; monthlyBudget: number; roiThreshold: number }[] = []
+  try {
+    const raw = localStorage.getItem('channel_budget_config')
+    if (raw) budgetConfig = JSON.parse(raw)
+  } catch { /* ignore */ }
+
+  const paidChannels = channels.filter(ch => ch.dailyCost > 0)
+  for (const channel of paidChannels) {
+    const config = budgetConfig.find(c => c.channelId === channel.id)
+    const threshold = config?.roiThreshold ?? 1.0
+
+    const recentDays = 7
+    const recentStats: { roi: number }[] = []
+    for (let i = 0; i < recentDays; i++) {
+      const d = new Date(now)
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().split('T')[0]
+      const dayStats = dailyChannelStats.filter(s => s.channelId === channel.id && s.date === dateStr)
+      const totalDeal = dayStats.reduce((sum, s) => sum + s.dealAmount, 0)
+      const cost = channel.dailyCost
+      const roi = cost > 0 ? totalDeal / cost : 0
+      recentStats.push({ roi })
+    }
+
+    let consecutiveBelowThreshold = 0
+    let maxConsecutive = 0
+    for (const stat of recentStats) {
+      if (stat.roi < threshold) {
+        consecutiveBelowThreshold++
+        maxConsecutive = Math.max(maxConsecutive, consecutiveBelowThreshold)
+      } else {
+        consecutiveBelowThreshold = 0
+      }
+    }
+
+    if (maxConsecutive >= 3) {
+      const latestRoi = recentStats[0]?.roi ?? 0
+      result.push({
+        id: `tr_roi_${channel.id}_${currentMonth}`,
+        type: 'target_risk',
+        severity: 'medium',
+        title: `${channel.name}ROI连续低于阈值`,
+        description: `${channel.name}渠道ROI连续${maxConsecutive}天低于${threshold}，当前${latestRoi.toFixed(2)}，建议评估投放策略`,
+        date: today,
+        resolved: false,
+        channelId: channel.id,
+        targetMonth: currentMonth,
+      })
+    }
+  }
+
+  if (monthTarget && monthTarget.validRate > 0) {
+    const monthStats = dailyChannelStats.filter(s => s.date.startsWith(currentMonth))
+    const totalNewLeads = monthStats.reduce((sum, s) => sum + s.newLeads, 0)
+    const totalValidLeads = monthStats.reduce((sum, s) => sum + s.validLeads, 0)
+    const actualValidRate = totalNewLeads > 0 ? totalValidLeads / totalNewLeads : 0
+
+    if (actualValidRate < monthTarget.validRate - 0.05) {
+      result.push({
+        id: `tr_validrate_${currentMonth}`,
+        type: 'target_risk',
+        severity: 'low',
+        title: '有效率目标进度偏慢',
+        description: `${currentMonth}月有效率${(actualValidRate * 100).toFixed(1)}%，低于目标${(monthTarget.validRate * 100).toFixed(1)}%，建议优化渠道筛选条件`,
+        date: today,
+        resolved: false,
+        targetMonth: currentMonth,
+      })
+    }
+  }
+
+  return result
+}
+
 export function getActiveAlerts(): AlertItem[] {
-  return alerts.filter(a => !a.resolved)
+  const staticActive = alerts.filter(a => !a.resolved)
+  const dynamicTargetRisk = generateTargetRiskAlerts()
+  return [...staticActive, ...dynamicTargetRisk]
 }
 
 export function getAlertsByType(type: AlertItem['type']): AlertItem[] {
-  return alerts.filter(a => a.type === type)
+  const staticByType = alerts.filter(a => a.type === type)
+  if (type === 'target_risk') {
+    return [...staticByType, ...generateTargetRiskAlerts()]
+  }
+  return staticByType
 }
