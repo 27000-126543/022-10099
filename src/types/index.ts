@@ -59,7 +59,7 @@ export interface ConsultantDaily {
 
 export interface AlertItem {
   id: string
-  type: 'overdue' | 'decline' | 'slow_response' | 'channel_shift'
+  type: 'overdue' | 'decline' | 'slow_response' | 'channel_shift' | 'target_risk'
   severity: 'high' | 'medium' | 'low'
   title: string
   description: string

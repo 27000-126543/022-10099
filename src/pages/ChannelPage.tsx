@@ -249,6 +249,41 @@ function CostInputSection() {
     })
   }, [costs, recentStats, startStr, endStr])
 
+  const budgetData = useMemo(() => {
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const daysElapsed = now.getDate()
+
+    const monthStats = dailyChannelStats.filter(s => s.date.startsWith(currentMonth))
+
+    return channels
+      .filter(ch => ch.dailyCost > 0)
+      .map(ch => {
+        const monthlyBudget = ch.dailyCost * daysInMonth
+        const monthCosts = costs.filter(c => c.channelId === ch.id && c.date.startsWith(currentMonth))
+        const customSpent = monthCosts.reduce((sum, c) => sum + c.amount, 0)
+        const spent = customSpent > 0 ? customSpent : ch.dailyCost * daysElapsed
+        const remaining = monthlyBudget - spent
+        const channelMonthStats = monthStats.filter(s => s.channelId === ch.id)
+        const dealAmount = channelMonthStats.reduce((sum, s) => sum + s.dealAmount, 0)
+        const roi = spent > 0 ? dealAmount / spent : 0
+        const percentage = monthlyBudget > 0 ? (spent / monthlyBudget) * 100 : 0
+
+        return {
+          id: ch.id,
+          name: ch.name,
+          color: ch.color,
+          monthlyBudget,
+          spent,
+          remaining,
+          dealAmount,
+          roi,
+          percentage,
+        }
+      })
+  }, [costs])
+
   const sortedCosts = useMemo(() => {
     return [...costs].sort((a, b) => b.date.localeCompare(a.date))
   }, [costs])
@@ -377,6 +412,87 @@ function CostInputSection() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-brand-border">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-amber/15 text-brand-amber font-medium">
+            预算
+          </span>
+          <h4 className="text-sm font-semibold text-brand-text-primary">预算消耗与投产进度</h4>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-brand-border/50">
+                <th className="text-left py-2 px-2 text-xs text-brand-text-muted font-medium">渠道</th>
+                <th className="text-right py-2 px-2 text-xs text-brand-text-muted font-medium">本月预算</th>
+                <th className="text-right py-2 px-2 text-xs text-brand-text-muted font-medium">已花费</th>
+                <th className="text-right py-2 px-2 text-xs text-brand-text-muted font-medium">剩余预算</th>
+                <th className="text-left py-2 px-2 text-xs text-brand-text-muted font-medium min-w-[120px]">预算消耗进度</th>
+                <th className="text-right py-2 px-2 text-xs text-brand-text-muted font-medium">本月ROI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {budgetData.map(row => {
+                const remainRatio = row.monthlyBudget > 0 ? row.remaining / row.monthlyBudget : 0
+                const remainColor = remainRatio < 0.2
+                  ? 'text-red-400'
+                  : remainRatio < 0.5
+                    ? 'text-amber-400'
+                    : 'text-emerald-400'
+                const roiColor = row.roi > 1.5
+                  ? 'text-emerald-400'
+                  : row.roi > 1.0
+                    ? 'text-amber-400'
+                    : 'text-red-400'
+                const barPercent = Math.min(row.percentage, 100)
+                const barColor = remainRatio < 0.2
+                  ? 'bg-red-500'
+                  : remainRatio < 0.5
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+
+                return (
+                  <tr key={row.id} className="border-b border-brand-border/30 last:border-0">
+                    <td className="py-2.5 px-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
+                        <span className="text-xs text-brand-text-secondary">{row.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-2 text-right text-xs font-mono text-brand-text-primary">
+                      ¥{row.monthlyBudget.toLocaleString()}
+                    </td>
+                    <td className="py-2.5 px-2 text-right text-xs font-mono text-brand-text-primary">
+                      ¥{row.spent.toLocaleString()}
+                    </td>
+                    <td className={cn('py-2.5 px-2 text-right text-xs font-mono font-medium', remainColor)}>
+                      ¥{row.remaining.toLocaleString()}
+                    </td>
+                    <td className="py-2.5 px-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-brand-card-hover rounded-full overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-all', barColor)}
+                            style={{ width: `${barPercent}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-brand-text-muted font-mono w-10 text-right">
+                          {row.percentage.toFixed(0)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className={cn('py-2.5 px-2 text-right text-xs font-mono font-medium', roiColor)}>
+                      {row.roi.toFixed(2)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="mt-5 pt-4 border-t border-brand-border">

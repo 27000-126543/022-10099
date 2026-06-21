@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react'
-import { Download, ChevronDown, TrendingUp, TrendingDown, Users, DollarSign, Target, CalendarCheck, MapPin, RefreshCw } from 'lucide-react'
+import { Download, ChevronDown, TrendingUp, TrendingDown, Users, DollarSign, Target, CalendarCheck, MapPin, RefreshCw, Settings } from 'lucide-react'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import PageWrapper from '@/components/Layout/PageWrapper'
@@ -9,6 +9,8 @@ import { monthlyReports, getLatestMonth } from '@/data/reports'
 import { channels, dailyChannelStats } from '@/data/channels'
 import { projects, dailyProjectStats } from '@/data/projects'
 import { consultants, consultantDaily } from '@/data/consultants'
+import { loadTargets, saveTargets, type MonthlyTarget } from '@/data/targets'
+import Modal from '@/components/UI/Modal'
 
 function fmtWan(v: number): string {
   if (v >= 100000000) return (v / 100000000).toFixed(2) + '亿'
@@ -122,6 +124,9 @@ export default function ReportPage() {
   const [selectedMonth, setSelectedMonth] = useState(getLatestMonth().month)
   const reportRef = useRef<HTMLDivElement>(null)
   const [exporting, setExporting] = useState(false)
+  const [targetConfig, setTargetConfig] = useState<MonthlyTarget[]>(() => loadTargets())
+  const [targetModalOpen, setTargetModalOpen] = useState(false)
+  const [editingTarget, setEditingTarget] = useState<MonthlyTarget | null>(null)
 
   const currentIdx = monthlyReports.findIndex(r => r.month === selectedMonth)
   const current = monthlyReports[currentIdx]
@@ -134,14 +139,12 @@ export default function ReportPage() {
   const maxLeads = Math.max(...monthlyReports.map(r => r.totalLeads))
   const maxDeal = Math.max(...monthlyReports.map(r => r.totalDealAmount))
 
-  const latestMonth = monthlyReports[monthlyReports.length - 1]
+  const monthTarget = targetConfig.find(t => t.month === selectedMonth)
   const targets = {
-    totalLeads: latestMonth.totalLeads * 1.15,
-    totalDealAmount: latestMonth.totalDealAmount * 1.15,
-    validRate: Math.min(1, latestMonth.validRate * 1.1),
-    bookingRate: Math.min(1, latestMonth.bookingRate * 1.1),
-    arrivalRate: Math.min(1, latestMonth.arrivalRate * 1.1),
-    repeatPurchaseRate: Math.min(1, latestMonth.repeatPurchaseRate * 1.1),
+    totalLeads: monthTarget?.totalLeads ?? current.totalLeads * 1.15,
+    totalDealAmount: monthTarget?.totalDealAmount ?? current.totalDealAmount * 1.15,
+    validRate: monthTarget?.validRate ?? Math.min(1, current.validRate * 1.1),
+    repeatPurchaseRate: monthTarget?.repeatPurchaseRate ?? Math.min(1, current.repeatPurchaseRate * 1.1),
   }
 
   const channelRoi = useMemo(() => {
@@ -217,17 +220,30 @@ export default function ReportPage() {
             <h1 className="text-2xl font-bold text-brand-text-primary">月度复盘报告</h1>
             <p className="text-sm text-brand-text-muted mt-1">{selectedMonth} 数据概览</p>
           </div>
-          <div className="relative">
-            <select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="appearance-none bg-brand-card border border-brand-border text-brand-text-primary rounded-lg px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-brand-emerald/50 cursor-pointer"
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                const existing = targetConfig.find(t => t.month === selectedMonth)
+                setEditingTarget(existing ?? { month: selectedMonth, totalLeads: 0, totalDealAmount: 0, validRate: 0, repeatPurchaseRate: 0 })
+                setTargetModalOpen(true)
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-brand-card border border-brand-border text-brand-text-muted rounded-lg text-sm hover:text-brand-text-primary hover:border-brand-emerald/50 transition-colors"
             >
-              {monthlyReports.map(r => (
-                <option key={r.month} value={r.month}>{r.month}</option>
-              ))}
-            </select>
-            <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-brand-text-muted pointer-events-none" />
+              <Settings size={15} />
+              配置目标
+            </button>
+            <div className="relative">
+              <select
+                value={selectedMonth}
+                onChange={e => setSelectedMonth(e.target.value)}
+                className="appearance-none bg-brand-card border border-brand-border text-brand-text-primary rounded-lg px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-brand-emerald/50 cursor-pointer"
+              >
+                {monthlyReports.map(r => (
+                  <option key={r.month} value={r.month}>{r.month}</option>
+                ))}
+              </select>
+              <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-brand-text-muted pointer-events-none" />
+            </div>
           </div>
         </div>
 
@@ -346,6 +362,80 @@ export default function ReportPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={targetModalOpen}
+        onClose={() => setTargetModalOpen(false)}
+        title={`配置目标 - ${editingTarget?.month ?? selectedMonth}`}
+      >
+        {editingTarget && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-brand-text-muted mb-1">客资目标</label>
+              <input
+                type="number"
+                value={editingTarget.totalLeads || ''}
+                onChange={e => setEditingTarget({ ...editingTarget, totalLeads: Number(e.target.value) })}
+                className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text-primary focus:outline-none focus:ring-2 focus:ring-brand-emerald/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-brand-text-muted mb-1">成交目标(元)</label>
+              <input
+                type="number"
+                value={editingTarget.totalDealAmount || ''}
+                onChange={e => setEditingTarget({ ...editingTarget, totalDealAmount: Number(e.target.value) })}
+                className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text-primary focus:outline-none focus:ring-2 focus:ring-brand-emerald/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-brand-text-muted mb-1">有效率目标(%)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={editingTarget.validRate ? (editingTarget.validRate * 100).toFixed(1) : ''}
+                onChange={e => setEditingTarget({ ...editingTarget, validRate: Number(e.target.value) / 100 })}
+                className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text-primary focus:outline-none focus:ring-2 focus:ring-brand-emerald/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-brand-text-muted mb-1">复购目标(%)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={editingTarget.repeatPurchaseRate ? (editingTarget.repeatPurchaseRate * 100).toFixed(1) : ''}
+                onChange={e => setEditingTarget({ ...editingTarget, repeatPurchaseRate: Number(e.target.value) / 100 })}
+                className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text-primary focus:outline-none focus:ring-2 focus:ring-brand-emerald/50"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setTargetModalOpen(false)}
+                className="px-4 py-2 text-sm text-brand-text-muted hover:text-brand-text-primary transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const updated = [...targetConfig]
+                  const idx = updated.findIndex(t => t.month === editingTarget.month)
+                  if (idx >= 0) {
+                    updated[idx] = editingTarget
+                  } else {
+                    updated.push(editingTarget)
+                  }
+                  saveTargets(updated)
+                  setTargetConfig(updated)
+                  setTargetModalOpen(false)
+                }}
+                className="px-4 py-2 text-sm bg-brand-emerald text-white rounded-lg hover:bg-brand-emerald/90 transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <div className="fixed bottom-6 right-6 z-50">
         <button

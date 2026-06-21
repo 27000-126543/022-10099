@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, TrendingDown, Timer, Activity, ChevronUp } from 'lucide-react'
+import { Clock, TrendingDown, Timer, Activity, ChevronUp, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AlertItem } from '@/types'
 import PageWrapper from '@/components/Layout/PageWrapper'
@@ -11,7 +12,7 @@ import { alerts, getActiveAlerts, getAlertsByType } from '@/data/alerts'
 import { consultants } from '@/data/consultants'
 import { channels } from '@/data/channels'
 
-type AlertType = 'all' | 'overdue' | 'decline' | 'slow_response' | 'channel_shift'
+type AlertType = 'all' | 'overdue' | 'decline' | 'slow_response' | 'channel_shift' | 'target_risk'
 
 const tabLabels: { key: AlertType; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -19,6 +20,7 @@ const tabLabels: { key: AlertType; label: string }[] = [
   { key: 'decline', label: '指标下滑' },
   { key: 'slow_response', label: '首响超时' },
   { key: 'channel_shift', label: '渠道骤变' },
+  { key: 'target_risk', label: '目标风险' },
 ]
 
 const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 }
@@ -36,12 +38,14 @@ const overdueLeads = [
 export default function AlertPage() {
   const [activeTab, setActiveTab] = useState<AlertType>('all')
   const [selectedOverdueId, setSelectedOverdueId] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   const activeAlerts = getActiveAlerts()
   const overdueCount = getAlertsByType('overdue').filter(a => !a.resolved).length
   const declineCount = getAlertsByType('decline').filter(a => !a.resolved).length
   const slowResponseCount = getAlertsByType('slow_response').filter(a => !a.resolved).length
   const channelShiftCount = getAlertsByType('channel_shift').filter(a => !a.resolved).length
+  const targetRiskCount = getAlertsByType('target_risk').filter(a => !a.resolved).length
 
   const filteredAlerts = activeTab === 'all'
     ? activeAlerts
@@ -63,7 +67,7 @@ export default function AlertPage() {
       <div className="space-y-6">
         <h1 className="text-xl font-bold text-brand-text-primary">异常预警</h1>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <button onClick={() => handleCardClick('overdue')} className="text-left">
             <MetricCard
               icon={<Clock size={18} />}
@@ -94,6 +98,14 @@ export default function AlertPage() {
               label="渠道骤变"
               value={channelShiftCount}
               color="blue"
+            />
+          </button>
+          <button onClick={() => handleCardClick('target_risk')} className="text-left">
+            <MetricCard
+              icon={<Target size={18} />}
+              label="目标风险"
+              value={targetRiskCount}
+              color="red"
             />
           </button>
         </div>
@@ -138,6 +150,8 @@ export default function AlertPage() {
                   onAction={() => {
                     if (alert.type === 'overdue') {
                       setSelectedOverdueId(prev => prev === alert.id ? null : alert.id)
+                    } else if (alert.type === 'target_risk') {
+                      navigate(alert.channelId ? '/channel' : '/report')
                     }
                   }}
                 />

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, CheckCircle2, Zap, CalendarCheck, Building2, DollarSign } from 'lucide-react'
+import { UserPlus, CheckCircle2, Zap, CalendarCheck, Building2, DollarSign, Target, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,7 @@ import FunnelChart from '@/components/Charts/FunnelChart'
 import { channels, getChannelStatsByDateRange } from '@/data/channels'
 import { dailyProjectStats } from '@/data/projects'
 import { getActiveAlerts } from '@/data/alerts'
+import { loadTargets, type MonthlyTarget } from '@/data/targets'
 
 type DateRangeKey = '7d' | '30d' | 'month'
 
@@ -46,6 +47,64 @@ export default function OverviewPage() {
   const channelStats = useMemo(() => getChannelStatsByDateRange(start, end), [start, end])
   const projectStats = useMemo(() => dailyProjectStats.filter(s => s.date >= start && s.date <= end), [start, end])
   const activeAlerts = useMemo(() => getActiveAlerts(), [])
+
+  const currentMonth = new Date().toISOString().slice(0, 7)
+  const monthTarget = useMemo(() => loadTargets().find(t => t.month === currentMonth), [currentMonth])
+
+  const monthStartStr = useMemo(() => {
+    const d = new Date()
+    return formatDate(new Date(d.getFullYear(), d.getMonth(), 1))
+  }, [])
+
+  const todayStr = useMemo(() => formatDate(new Date()), [])
+
+  const currentMonthStats = useMemo(
+    () => getChannelStatsByDateRange(monthStartStr, todayStr),
+    [monthStartStr, todayStr]
+  )
+
+  const targetProgress = useMemo(() => {
+    if (!monthTarget) return null
+
+    const now = new Date()
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const daysPassed = Math.max(now.getDate(), 1)
+
+    const totalNewLeads = currentMonthStats.reduce((s, c) => s + c.newLeads, 0)
+    const totalValidLeads = currentMonthStats.reduce((s, c) => s + c.validLeads, 0)
+    const totalDealAmount = currentMonthStats.reduce((s, c) => s + c.dealAmount, 0)
+    const validRate = totalNewLeads > 0 ? totalValidLeads / totalNewLeads : 0
+
+    const predictedLeads = (totalNewLeads / daysPassed) * daysInMonth
+    const predictedDealAmount = (totalDealAmount / daysPassed) * daysInMonth
+
+    return {
+      leads: {
+        current: totalNewLeads,
+        target: monthTarget.totalLeads,
+        predicted: Math.round(predictedLeads),
+        onTrack: predictedLeads >= monthTarget.totalLeads,
+        progress: Math.min(totalNewLeads / monthTarget.totalLeads, 1),
+        gap: monthTarget.totalLeads - totalNewLeads,
+      },
+      dealAmount: {
+        current: totalDealAmount,
+        target: monthTarget.totalDealAmount,
+        predicted: Math.round(predictedDealAmount),
+        onTrack: predictedDealAmount >= monthTarget.totalDealAmount,
+        progress: Math.min(totalDealAmount / monthTarget.totalDealAmount, 1),
+        gap: monthTarget.totalDealAmount - totalDealAmount,
+      },
+      validRate: {
+        current: validRate,
+        target: monthTarget.validRate,
+        predicted: validRate,
+        onTrack: validRate >= monthTarget.validRate,
+        progress: Math.min(validRate / monthTarget.validRate, 1),
+        gap: monthTarget.validRate - validRate,
+      },
+    }
+  }, [monthTarget, currentMonthStats])
 
   const metrics = useMemo(() => {
     const totalNewLeads = channelStats.reduce((s, c) => s + c.newLeads, 0)
@@ -187,6 +246,118 @@ export default function OverviewPage() {
             format={(v) => Math.round(v).toLocaleString()}
           />
         </div>
+
+        {targetProgress && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Target size={16} className="text-brand-text-muted" />
+              <h3 className="text-sm font-medium text-brand-text-muted uppercase tracking-wider">目标进度</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Target size={14} className="text-emerald-400" />
+                    <span className="text-xs text-brand-text-muted">客资量目标</span>
+                  </div>
+                  {targetProgress.leads.onTrack ? (
+                    <span className="flex items-center gap-1 text-xs text-emerald-400"><TrendingUp size={12} />预计达标</span>
+                  ) : targetProgress.leads.progress < 0.5 ? (
+                    <span className="flex items-center gap-1 text-xs text-red-400"><AlertTriangle size={12} />预计不达标</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-red-400"><TrendingDown size={12} />预计不达标</span>
+                  )}
+                </div>
+                <div className="text-xl font-bold text-brand-text-primary mb-3">
+                  {targetProgress.leads.current.toLocaleString()} / {targetProgress.leads.target.toLocaleString()}
+                </div>
+                <div className="h-2 bg-brand-border rounded-full overflow-hidden mb-3">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      targetProgress.leads.onTrack ? 'bg-emerald-500' : targetProgress.leads.progress >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
+                    )}
+                    style={{ width: `${targetProgress.leads.progress * 100}%` }}
+                  />
+                </div>
+                <div className={cn('text-xs mb-1', targetProgress.leads.onTrack ? 'text-emerald-400' : 'text-red-400')}>
+                  按当前节奏预计月底: {targetProgress.leads.predicted.toLocaleString()}
+                </div>
+                <div className="text-xs text-brand-text-muted">
+                  {targetProgress.leads.gap > 0 ? `还差 ${targetProgress.leads.gap.toLocaleString()}` : '已达标'}
+                </div>
+              </div>
+
+              <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Target size={14} className="text-amber-400" />
+                    <span className="text-xs text-brand-text-muted">成交金额目标</span>
+                  </div>
+                  {targetProgress.dealAmount.onTrack ? (
+                    <span className="flex items-center gap-1 text-xs text-emerald-400"><TrendingUp size={12} />预计达标</span>
+                  ) : targetProgress.dealAmount.progress < 0.5 ? (
+                    <span className="flex items-center gap-1 text-xs text-red-400"><AlertTriangle size={12} />预计不达标</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-red-400"><TrendingDown size={12} />预计不达标</span>
+                  )}
+                </div>
+                <div className="text-xl font-bold text-brand-text-primary mb-3">
+                  ¥{Math.round(targetProgress.dealAmount.current).toLocaleString()} / ¥{targetProgress.dealAmount.target.toLocaleString()}
+                </div>
+                <div className="h-2 bg-brand-border rounded-full overflow-hidden mb-3">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      targetProgress.dealAmount.onTrack ? 'bg-emerald-500' : targetProgress.dealAmount.progress >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
+                    )}
+                    style={{ width: `${targetProgress.dealAmount.progress * 100}%` }}
+                  />
+                </div>
+                <div className={cn('text-xs mb-1', targetProgress.dealAmount.onTrack ? 'text-emerald-400' : 'text-red-400')}>
+                  按当前节奏预计月底: ¥{targetProgress.dealAmount.predicted.toLocaleString()}
+                </div>
+                <div className="text-xs text-brand-text-muted">
+                  {targetProgress.dealAmount.gap > 0 ? `还差 ¥${Math.round(targetProgress.dealAmount.gap).toLocaleString()}` : '已达标'}
+                </div>
+              </div>
+
+              <div className="bg-brand-card border border-brand-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Target size={14} className="text-blue-400" />
+                    <span className="text-xs text-brand-text-muted">有效率目标</span>
+                  </div>
+                  {targetProgress.validRate.onTrack ? (
+                    <span className="flex items-center gap-1 text-xs text-emerald-400"><TrendingUp size={12} />预计达标</span>
+                  ) : targetProgress.validRate.progress < 0.5 ? (
+                    <span className="flex items-center gap-1 text-xs text-red-400"><AlertTriangle size={12} />预计不达标</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-red-400"><TrendingDown size={12} />预计不达标</span>
+                  )}
+                </div>
+                <div className="text-xl font-bold text-brand-text-primary mb-3">
+                  {(targetProgress.validRate.current * 100).toFixed(1)}% / {(targetProgress.validRate.target * 100).toFixed(1)}%
+                </div>
+                <div className="h-2 bg-brand-border rounded-full overflow-hidden mb-3">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      targetProgress.validRate.onTrack ? 'bg-emerald-500' : targetProgress.validRate.progress >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
+                    )}
+                    style={{ width: `${targetProgress.validRate.progress * 100}%` }}
+                  />
+                </div>
+                <div className={cn('text-xs mb-1', targetProgress.validRate.onTrack ? 'text-emerald-400' : 'text-red-400')}>
+                  当月有效率: {(targetProgress.validRate.current * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-brand-text-muted">
+                  {targetProgress.validRate.gap > 0 ? `还差 ${(targetProgress.validRate.gap * 100).toFixed(1)}%` : '已达标'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-brand-card border border-brand-border rounded-xl p-5">
